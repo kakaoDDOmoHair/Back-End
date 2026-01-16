@@ -6,23 +6,17 @@ import lombok.Getter;
 @Getter
 @AllArgsConstructor
 public class ApiResponse<T> {
+    private boolean success;
+    private String message;
+    private T data;
 
-    private String status;  // "success" 또는 "fail"
-    private String message; // 메시지 (예: "로그인 성공")
-    private T data;         // 실제 데이터
-
-    // 1. 성공했을 때 (데이터만)
+    // 성공했을 때 쓰는 것
     public static <T> ApiResponse<T> success(T data) {
-        return new ApiResponse<>("success", "요청이 성공했습니다.", data);
+        return new ApiResponse<>(true, "요청 성공", data);
     }
 
-    // 2. 성공했을 때 (메시지 + 데이터)
-    public static <T> ApiResponse<T> success(String message, T data) {
-        return new ApiResponse<>("success", message, data);
-    }
-
-    // 3. 실패했을 때 (메시지만)
+    // 실패했을 때 쓰는 것 (이게 없어서 에러가 났던 겁니다!)
     public static <T> ApiResponse<T> error(String message) {
-        return new ApiResponse<>("fail", message, null);
+        return new ApiResponse<>(false, message, null);
     }
 }
