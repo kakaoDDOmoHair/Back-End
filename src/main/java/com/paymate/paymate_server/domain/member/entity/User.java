@@ -49,4 +49,10 @@ public class User {
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+    public void updatePassword(String encodedPassword) {
+        this.password = encodedPassword;
+    }
+    public void updateStatus(UserStatus status) {
+        this.status = status;
+    }
 }
