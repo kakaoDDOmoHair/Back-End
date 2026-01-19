@@ -102,4 +102,16 @@ public class JwtTokenProvider {
             return e.getClaims();
         }
     }
+    public String createResetToken(String email) {
+        Date now = new Date();
+        Date validity = new Date(now.getTime() + 600000); // 10분 (10 * 60 * 1000)
+
+        return Jwts.builder()
+                .setSubject(email) // 이메일만 담음
+                .claim("type", "RESET") // "이건 리셋용 토큰이다"라고 명시
+                .setIssuedAt(now)
+                .setExpiration(validity)
+                .signWith(key, SignatureAlgorithm.HS256)
+                .compact();
+    }
 }
