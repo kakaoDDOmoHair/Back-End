@@ -9,9 +9,11 @@ public class VerificationDto {
 
     @Getter
     @NoArgsConstructor
+    @AllArgsConstructor
     public static class Request {
-        private String bankName;      // 은행명 (예: 국민, 신한)
+        private String bankName;      // 은행명
         private String accountNumber; // 계좌번호
+        private String ownerName;
     }
 
     @Getter
@@ -20,6 +22,10 @@ public class VerificationDto {
     public static class Response {
         private boolean success;           // 성공 여부
         private String message;            // 메시지
-        private String verificationToken;  // ⭐ 핵심: 검증 완료 토큰
+
+        private String verificationToken;
+
+        private String bankName;           // 인증된 은행명
+        private String ownerName;          // 인증된 예금주명
     }
 }

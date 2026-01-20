@@ -52,11 +52,6 @@ public class AuthController {
         return ResponseEntity.ok(response);
     }
 
-    // 5. 계좌 실명 인증 (Mock)
-    @PostMapping("/verify-account")
-    public ResponseEntity<AccountVerifyResponseDto> verifyAccount(@RequestBody AccountVerifyRequestDto request) {
-        return ResponseEntity.ok(authService.verifyAccount(request));
-    }
 
     // 6. ID 찾기 (인증번호 발송)
     @PostMapping("/find-id/send-code")
