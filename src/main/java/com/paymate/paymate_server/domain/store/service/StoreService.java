@@ -1,16 +1,22 @@
 package com.paymate.paymate_server.domain.store.service;
 
 import com.paymate.paymate_server.domain.member.entity.User;
+import com.paymate.paymate_server.domain.member.enums.UserRole;
 import com.paymate.paymate_server.domain.member.repository.MemberRepository;
 import com.paymate.paymate_server.domain.store.dto.CheckBusinessResponse;
 import com.paymate.paymate_server.domain.store.dto.DashboardResponse;
+import com.paymate.paymate_server.domain.store.dto.JoinRequest;
 import com.paymate.paymate_server.domain.store.dto.StoreRequest;
 import com.paymate.paymate_server.domain.store.dto.StoreResponse;
+import com.paymate.paymate_server.domain.store.entity.Employment;
 import com.paymate.paymate_server.domain.store.entity.Store;
+import com.paymate.paymate_server.domain.store.repository.EmploymentRepository;
 import com.paymate.paymate_server.domain.store.repository.StoreRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -18,21 +24,20 @@ import org.springframework.transaction.annotation.Transactional;
 public class StoreService {
 
     private final StoreRepository storeRepository;
-    private final MemberRepository userRepository;
-    // ... (기존 필드 선언부 아래에 추가)
-    private final com.paymate.paymate_server.domain.store.repository.EmploymentRepository employmentRepository;
-    // ▲ 위 필드를 추가하고, @RequiredArgsConstructor 덕분에 생성자는 자동 처리됨
+    private final MemberRepository memberRepository; // 변수명 memberRepository로 통일
+    private final EmploymentRepository employmentRepository;
 
     // 1. 매장 생성
     public Long createStore(StoreRequest request) {
-        User owner = userRepository.findById(request.getUserId())
+        User owner = memberRepository.findById(request.getUserId())
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사용자입니다."));
 
         Store store = Store.builder()
                 .owner(owner)
+                // 👇 DTO(JSON) 이름 -> Entity 이름 매핑
+                .name(request.getStoreName())           // storeName -> name
+                .presidentName(request.getOwnerName())  // ownerName -> presidentName
                 .businessNumber(request.getBusinessNumber())
-                .presidentName(request.getOwnerName())
-                .name(request.getStoreName())
                 .openingDate(request.getOpeningDate())
                 .address(request.getAddress())
                 .detailAddress(request.getDetailAddress())
@@ -74,9 +79,9 @@ public class StoreService {
     }
 
     // 5. 알바생 매장 가입 (초대코드 입력)
-    public Long joinStore(com.paymate.paymate_server.domain.store.dto.JoinRequest request) {
+    public Long joinStore(JoinRequest request) {
         // 1. 알바생 찾기
-        User employee = userRepository.findById(request.getUserId())
+        User employee = memberRepository.findById(request.getUserId())
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사용자입니다."));
 
         // 2. 초대코드로 매장 찾기
@@ -89,17 +94,15 @@ public class StoreService {
         }
 
         // 4. 고용 관계 생성 (Employment)
-        com.paymate.paymate_server.domain.store.entity.Employment employment =
-                com.paymate.paymate_server.domain.store.entity.Employment.builder()
-                        .employee(employee)
-                        .store(store)
-                        .role(com.paymate.paymate_server.domain.member.enums.UserRole.WORKER) // 기본 알바생 권한
-                        .joinedAt(java.time.LocalDateTime.now())
-                        .build();
+        Employment employment = Employment.builder()
+                .employee(employee)
+                .store(store)
+                .role(UserRole.WORKER) // 기본 알바생 권한
+                .joinedAt(LocalDateTime.now())
+                .build();
 
         employmentRepository.save(employment);
 
         return store.getId();
     }
-
-} // <--- 클래스 끝나는 괄호는 여기 딱 하나만!
+}
