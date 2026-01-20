@@ -3,7 +3,10 @@ package com.paymate.paymate_server.domain.schedule.entity;
 import com.paymate.paymate_server.domain.member.entity.User;
 import com.paymate.paymate_server.domain.store.entity.Store;
 import jakarta.persistence.*;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -23,23 +26,22 @@ public class Schedule {
     @JoinColumn(name = "store_id")
     private Store store;
 
+    // ▼ [수정 핵심] 기존 worker -> user로 이름 변경!
+    // 이렇게 해야 서비스에서 .user()와 .getUser()를 쓸 수 있습니다.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
-    private User worker;
+    private User user;
 
-    @Column(nullable = false)
-    private LocalDate workDate; // 근무 날짜 (YYYY-MM-DD)
+    private LocalDate workDate;
 
-    @Column(nullable = false)
-    private LocalTime startTime; // 시작 시간 (HH:mm)
+    private LocalTime startTime;
 
-    @Column(nullable = false)
-    private LocalTime endTime;   // 종료 시간 (HH:mm)
+    private LocalTime endTime;
 
-    // 편의 메서드: 시간 변경
-    public void updateTime(LocalDate date, LocalTime start, LocalTime end) {
-        this.workDate = date;
-        this.startTime = start;
-        this.endTime = end;
+    // ▼ [추가] 서비스 코드(updateSchedule)에서 사용하는 수정 메서드
+    public void updateTime(LocalDate workDate, LocalTime startTime, LocalTime endTime) {
+        this.workDate = workDate;
+        this.startTime = startTime;
+        this.endTime = endTime;
     }
 }
