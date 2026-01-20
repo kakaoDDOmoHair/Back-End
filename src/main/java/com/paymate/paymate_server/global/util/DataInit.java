@@ -9,9 +9,9 @@ import com.paymate.paymate_server.domain.store.enums.TaxType;     // 👈 import
 import com.paymate.paymate_server.domain.store.repository.StoreRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import com.paymate.paymate_server.domain.notification.repository.NotificationRepository;
-
 
 @Component
 @RequiredArgsConstructor
@@ -20,6 +20,7 @@ public class DataInit implements CommandLineRunner {
     private final MemberRepository memberRepository;
     private final StoreRepository storeRepository;
     private final NotificationRepository notificationRepository;
+    private final PasswordEncoder passwordEncoder; // 👈 이 한 줄 추가! (Import 필수)
 
     @Override
     public void run(String... args) {
@@ -30,7 +31,7 @@ public class DataInit implements CommandLineRunner {
             owner = User.builder()
                     .name("김사장")
                     .email("owner@paymate.com")
-                    .password("1234")
+                    .password(passwordEncoder.encode("1234"))
                     .role(UserRole.OWNER)
                     .build();
             memberRepository.save(owner);
@@ -60,7 +61,7 @@ public class DataInit implements CommandLineRunner {
             User worker = User.builder()
                     .name("이알바")
                     .email("worker@paymate.com")
-                    .password("1234")
+                    .password(passwordEncoder.encode("1234"))
                     .role(UserRole.WORKER)
                     .build();
             memberRepository.save(worker);
