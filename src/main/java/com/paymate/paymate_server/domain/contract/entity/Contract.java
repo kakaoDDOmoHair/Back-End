@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
 @Entity
 @Getter
 @NoArgsConstructor
+@Setter // 👈 ✨ 핵심! 이 줄이 있어야 setWage, setStatus 등을 쓸 수 있습니다.
 @AllArgsConstructor
 @Builder
 @Table(name = "contracts")
