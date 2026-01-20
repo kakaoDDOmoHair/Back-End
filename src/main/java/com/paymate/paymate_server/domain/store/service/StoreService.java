@@ -24,13 +24,19 @@ import java.time.LocalDateTime;
 public class StoreService {
 
     private final StoreRepository storeRepository;
-    private final MemberRepository memberRepository; // 변수명 memberRepository로 통일
+    private final MemberRepository memberRepository;
     private final EmploymentRepository employmentRepository;
 
     // 1. 매장 생성
     public Long createStore(StoreRequest request) {
         User owner = memberRepository.findById(request.getUserId())
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사용자입니다."));
+
+        // ▼ [추가된 부분] 계좌 인증 토큰 검증 로직
+        // 토큰이 없거나, "VERIFIED_"로 시작하지 않으면 매장 등록을 거부합니다.
+        if (request.getVerificationToken() == null || !request.getVerificationToken().startsWith("VERIFIED_")) {
+            throw new IllegalArgumentException("계좌 실명 인증이 완료되지 않았습니다. 인증 후 다시 시도해주세요.");
+        }
 
         Store store = Store.builder()
                 .owner(owner)
