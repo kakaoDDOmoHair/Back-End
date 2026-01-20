@@ -32,4 +32,5 @@ public class StoreRequest {
     private String accountNumber;  // 계좌번호 (평문 -> DB 저장시 자동 암호화됨)
 
     private String inviteCode;     // 초대코드 (직접 입력하거나, 서버에서 생성하거나)
+    private String verificationToken;
 }
