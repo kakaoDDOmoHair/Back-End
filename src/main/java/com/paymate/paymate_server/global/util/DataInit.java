@@ -10,6 +10,8 @@ import com.paymate.paymate_server.domain.store.repository.StoreRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
+import com.paymate.paymate_server.domain.notification.repository.NotificationRepository;
+
 
 @Component
 @RequiredArgsConstructor
@@ -17,6 +19,7 @@ public class DataInit implements CommandLineRunner {
 
     private final MemberRepository memberRepository;
     private final StoreRepository storeRepository;
+    private final NotificationRepository notificationRepository;
 
     @Override
     public void run(String... args) {
@@ -62,6 +65,31 @@ public class DataInit implements CommandLineRunner {
                     .build();
             memberRepository.save(worker);
             System.out.println("✅ [DataInit] 임시 알바생(ID:2) 생성 완료");
+        }
+        // 5. 임시 알림 생성 (알바생용)
+        if (notificationRepository.count() == 0) {
+            User worker = memberRepository.findById(2L).orElse(null);
+
+            if (worker != null) {
+                // 1) 근로계약서 알림
+                notificationRepository.save(com.paymate.paymate_server.domain.notification.entity.Notification.builder()
+                        .user(worker)
+                        .title("근로계약서 도착")
+                        .message("근로계약서가 작성되었습니다. 확인해주세요.")
+                        .type(com.paymate.paymate_server.domain.notification.enums.NotificationType.WORK)
+                        .build());
+
+                // 2) 급여 알림
+                notificationRepository.save(com.paymate.paymate_server.domain.notification.entity.Notification.builder()
+                        .user(worker)
+                        .title("급여 정산 완료")
+                        .message("1월 급여 정산이 완료되었습니다.")
+                        .type(com.paymate.paymate_server.domain.notification.enums.NotificationType.PAYMENT)
+                        .isRead(true) // 읽은 상태 테스트
+                        .build());
+
+                System.out.println("✅ [DataInit] 임시 알림(이동 없음) 생성 완료");
+            }
         }
     }
 }
