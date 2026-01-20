@@ -4,6 +4,8 @@ import com.paymate.paymate_server.domain.notification.enums.NotificationType;
 import com.paymate.paymate_server.domain.member.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
+
 import java.time.LocalDateTime;
 
 @Entity
@@ -20,7 +22,7 @@ public class Notification {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
-    private User user; // 수신자
+    private User user;
 
     @Column(nullable = false, length = 100)
     private String title;
@@ -29,11 +31,20 @@ public class Notification {
     private String message;
 
     @Enumerated(EnumType.STRING)
-    private NotificationType type;
+    private NotificationType type; // WORK, PAYMENT, NOTICE
 
     @Column(name = "is_read")
-    private boolean isRead;
+    @Builder.Default
+    private boolean isRead = false;
 
-    @Column(name = "created_at")
+    // ❌ relatedId 삭제함 (단순 알림용)
+
+    @Column(name = "created_at", updatable = false)
+    @CreationTimestamp
     private LocalDateTime createdAt;
+
+    // 읽음 처리 메서드
+    public void read() {
+        this.isRead = true;
+    }
 }
