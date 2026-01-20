@@ -63,9 +63,7 @@ public class MemberService {
         if (!passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
             throw new IllegalArgumentException("비밀번호가 일치하지 않습니다.");
         }
-
-        // 3. 탈퇴 처리 (UserStatus 변경)
-        user.updateStatus(com.paymate.paymate_server.domain.member.enums.UserStatus.DELETED);
+        memberRepository.delete(user);
     }
     @Transactional
 
