@@ -211,8 +211,8 @@ public class AttendanceService {
 
         // [주의] 실제로는 Request에 userId가 포함되어야 합니다.
         // 테스트를 위해 임시로 ID가 2인 유저(알바생)로 고정합니다. 테스트 시 본인 DB에 맞는 ID로 수정하세요.
-        User user = memberRepository.findById(2L)
-                .orElseThrow(() -> new IllegalArgumentException("해당 유저(ID:2)가 없습니다."));
+        User user = memberRepository.findById(request.getUserId())
+                .orElseThrow(() -> new IllegalArgumentException("해당 유저(ID:" + request.getUserId() + ")가 없습니다."));
 
         LocalDate date = LocalDate.parse(request.getWorkDate());
         LocalDateTime start = LocalDateTime.of(date, LocalTime.parse(request.getStartTime()));

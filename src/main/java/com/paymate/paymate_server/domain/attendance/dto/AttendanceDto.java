@@ -13,7 +13,7 @@ public class AttendanceDto {
     @AllArgsConstructor
     public static class ClockInRequest {
         private Long storeId;
-        private Long userId; // 테스트용 (실제론 토큰 사용)
+        private Long userId;
         private Double lat;
         private Double lon;
         private String wifiBssid;
@@ -103,6 +103,7 @@ public class AttendanceDto {
     @AllArgsConstructor
     public static class ManualRegisterRequest {
         private Long storeId;
+        private Long userId;
         private String workDate;
         private String startTime;
         private String endTime;
