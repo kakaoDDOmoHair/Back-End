@@ -1,7 +1,9 @@
 package com.paymate.paymate_server.domain.modification.service;
 
+import com.paymate.paymate_server.domain.attendance.service.AttendanceService;
+import com.paymate.paymate_server.domain.schedule.service.ScheduleService;
 import com.paymate.paymate_server.domain.member.entity.User;
-import com.paymate.paymate_server.domain.member.repository.MemberRepository; // 👈 이걸로 변경!import com.paymate.paymate_server.domain.modification.dto.ModificationRequestDto;
+import com.paymate.paymate_server.domain.member.repository.MemberRepository;
 import com.paymate.paymate_server.domain.modification.dto.ModificationRequestDto;
 import com.paymate.paymate_server.domain.modification.dto.ModificationResponseDto;
 import com.paymate.paymate_server.domain.modification.entity.ModificationRequest;
@@ -14,7 +16,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -24,18 +25,18 @@ import java.util.stream.Collectors;
 public class ModificationService {
 
     private final ModificationRepository modificationRepository;
-    private final MemberRepository memberRepository; // 👈 이름 변경
+    private final MemberRepository memberRepository;
     private final StoreRepository storeRepository;
 
-    // TODO: 🤝 추후 팀원들이 만든 Service 주입 필요 (AttendanceService, ScheduleService)
-    // private final AttendanceService attendanceService;
-    // private final ScheduleService scheduleService;
+    // ✅ 다른 서비스 주입 완료 (주석 해제됨)
+    private final AttendanceService attendanceService;
+    private final ScheduleService scheduleService;
 
     // 1. 등록 (로그인한 유저 ID 사용)
     @Transactional
     public ModificationResponseDto createModification(Long userId, ModificationRequestDto dto) {
         // 토큰에서 뽑은 ID로 유저 찾기
-        User requester = memberRepository.findById(userId) // ✅ 해결!
+        User requester = memberRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
 
         Store store = storeRepository.findById(dto.getStoreId())
@@ -45,13 +46,13 @@ public class ModificationService {
                 .requester(requester)
                 .store(store)
                 .targetType(dto.getTargetType())
-                .targetId(dto.getTargetId()) // REGISTER인 경우 null일 수 있음
+                .targetId(dto.getTargetId())
                 .requestType(dto.getRequestType())
                 .beforeValue(dto.getBeforeValue())
                 .afterValue(dto.getAfterValue())
                 .targetDate(dto.getTargetDate())
                 .reason(dto.getReason())
-                .status(RequestStatus.PENDING) // ✅ 초기 상태는 무조건 PENDING
+                .status(RequestStatus.PENDING) // 초기 상태는 무조건 PENDING
                 .build();
 
         return new ModificationResponseDto(modificationRepository.save(request));
@@ -119,13 +120,14 @@ public class ModificationService {
     private void applyModificationToTarget(ModificationRequest request) {
         System.out.println(">>> [AUTO UPDATE] " + request.getTargetType() + " 수정 로직 실행...");
 
-        /* TODO: 🛠️ 팀원들과 코드 합칠 때 아래 주석 해제 및 구현!
+        // ✅ 주석 해제 및 실제 로직 연결 완료
+        if (request.getTargetType() == RequestTargetType.ATTENDANCE) {
+            // 근무 기록 수정 요청인 경우 -> AttendanceService 호출
+            attendanceService.updateAttendance(request.getTargetId(), request.getAfterValue());
 
-         if (request.getTargetType() == RequestTargetType.ATTENDANCE) {
-             // attendanceService.updateByRequest(request.getTargetId(), request.getAfterValue());
-         } else if (request.getTargetType() == RequestTargetType.SCHEDULE) {
-             // scheduleService.updateByRequest(request.getTargetId(), request.getAfterValue());
-         }
-        */
+        } else if (request.getTargetType() == RequestTargetType.SCHEDULE) {
+            // 스케줄 수정 요청인 경우 -> ScheduleService 호출
+            scheduleService.updateSchedule(request.getTargetId(), request.getAfterValue());
+        }
     }
 }
