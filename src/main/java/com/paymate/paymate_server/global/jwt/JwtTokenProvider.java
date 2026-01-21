@@ -114,4 +114,8 @@ public class JwtTokenProvider {
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
+    // 4. 토큰에서 회원 정보(이메일) 추출 (필터에서 사용)
+    public String getSubject(String token) {
+        return parseClaims(token).getSubject();
+    }
 }
