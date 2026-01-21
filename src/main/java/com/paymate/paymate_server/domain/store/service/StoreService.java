@@ -1,5 +1,7 @@
 package com.paymate.paymate_server.domain.store.service;
 
+import com.paymate.paymate_server.domain.member.entity.Account; // 👈 import 확인
+import com.paymate.paymate_server.domain.member.repository.AccountRepository; // 👈 import 확인
 import com.paymate.paymate_server.domain.member.entity.User;
 import com.paymate.paymate_server.domain.member.enums.UserRole;
 import com.paymate.paymate_server.domain.member.repository.MemberRepository;
@@ -12,6 +14,7 @@ import com.paymate.paymate_server.domain.store.entity.Employment;
 import com.paymate.paymate_server.domain.store.entity.Store;
 import com.paymate.paymate_server.domain.store.repository.EmploymentRepository;
 import com.paymate.paymate_server.domain.store.repository.StoreRepository;
+import com.paymate.paymate_server.global.util.AesUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,23 +29,25 @@ public class StoreService {
     private final StoreRepository storeRepository;
     private final MemberRepository memberRepository;
     private final EmploymentRepository employmentRepository;
+    private final AccountRepository accountRepository; // 👈 [추가] 계좌 저장을 위해 필요
+    private final AesUtil aesUtil;
 
-    // 1. 매장 생성
+    // 1. 매장 생성 (계좌 자동 생성 포함)
     public Long createStore(StoreRequest request) {
+        // 1-1. 사용자 검증
         User owner = memberRepository.findById(request.getUserId())
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사용자입니다."));
 
-        // ▼ [추가된 부분] 계좌 인증 토큰 검증 로직
-        // 토큰이 없거나, "VERIFIED_"로 시작하지 않으면 매장 등록을 거부합니다.
+        // 1-2. 계좌 인증 토큰 검증
         if (request.getVerificationToken() == null || !request.getVerificationToken().startsWith("VERIFIED_")) {
             throw new IllegalArgumentException("계좌 실명 인증이 완료되지 않았습니다. 인증 후 다시 시도해주세요.");
         }
 
+        // 1-3. 매장 정보 저장
         Store store = Store.builder()
                 .owner(owner)
-                // 👇 DTO(JSON) 이름 -> Entity 이름 매핑
-                .name(request.getStoreName())           // storeName -> name
-                .presidentName(request.getOwnerName())  // ownerName -> presidentName
+                .name(request.getStoreName())
+                .presidentName(request.getOwnerName())
                 .businessNumber(request.getBusinessNumber())
                 .openingDate(request.getOpeningDate())
                 .address(request.getAddress())
@@ -58,7 +63,33 @@ public class StoreService {
                 .inviteCode(request.getInviteCode())
                 .build();
 
-        return storeRepository.save(store).getId();
+        storeRepository.save(store); // 매장 저장 완료
+
+        // ==========================================================
+        // ▼ [추가된 로직] 입력받은 계좌 정보를 Account 테이블에 자동 저장
+        // ==========================================================
+        try {
+            // (1) 계좌번호 암호화 (보안 필수!)
+            String encryptedAccountNumber = aesUtil.encrypt(request.getAccountNumber());
+
+            // (2) Account 엔티티 생성
+            Account account = Account.builder()
+                    .bankName(request.getBankName())       // 요청받은 은행명
+                    .accountNumber(encryptedAccountNumber) // 암호화된 계좌번호
+                    .balance(0L)                            // 초기 잔액 0원
+                    .user(owner)                           // 현재 사장님과 연결
+                    .build();
+
+            // (3) DB 저장
+            accountRepository.save(account);
+
+        } catch (Exception e) {
+            // 암호화 실패 시 예외 처리 (트랜잭션 롤백됨)
+            throw new RuntimeException("계좌번호 암호화 및 저장 중 오류가 발생했습니다.", e);
+        }
+        // ==========================================================
+
+        return store.getId();
     }
 
     // 2. 매장 상세 조회
@@ -86,24 +117,20 @@ public class StoreService {
 
     // 5. 알바생 매장 가입 (초대코드 입력)
     public Long joinStore(JoinRequest request) {
-        // 1. 알바생 찾기
         User employee = memberRepository.findById(request.getUserId())
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사용자입니다."));
 
-        // 2. 초대코드로 매장 찾기
         Store store = storeRepository.findByInviteCode(request.getInviteCode())
                 .orElseThrow(() -> new IllegalArgumentException("유효하지 않은 초대코드입니다."));
 
-        // 3. 이미 가입했는지 확인
         if (employmentRepository.existsByEmployeeAndStore(employee, store)) {
             throw new IllegalArgumentException("이미 가입된 매장입니다.");
         }
 
-        // 4. 고용 관계 생성 (Employment)
         Employment employment = Employment.builder()
                 .employee(employee)
                 .store(store)
-                .role(UserRole.WORKER) // 기본 알바생 권한
+                .role(UserRole.WORKER)
                 .joinedAt(LocalDateTime.now())
                 .build();
 
