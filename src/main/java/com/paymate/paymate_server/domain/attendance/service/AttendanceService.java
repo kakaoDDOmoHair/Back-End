@@ -2,12 +2,8 @@ package com.paymate.paymate_server.domain.attendance.service;
 
 import com.paymate.paymate_server.domain.attendance.dto.AttendanceDto;
 import com.paymate.paymate_server.domain.attendance.entity.Attendance;
-import com.paymate.paymate_server.domain.attendance.entity.AttendanceRequest; // [New]
-import com.paymate.paymate_server.domain.attendance.enums.AttendanceRequestStatus; // [New]
-import com.paymate.paymate_server.domain.attendance.enums.AttendanceRequestType; // [New]
 import com.paymate.paymate_server.domain.attendance.enums.AttendanceStatus;
 import com.paymate.paymate_server.domain.attendance.repository.AttendanceRepository;
-import com.paymate.paymate_server.domain.attendance.repository.AttendanceRequestRepository; // [New]
 import com.paymate.paymate_server.domain.member.entity.User;
 import com.paymate.paymate_server.domain.member.repository.MemberRepository;
 import com.paymate.paymate_server.domain.schedule.entity.Schedule;
@@ -36,7 +32,6 @@ public class AttendanceService {
     private final MemberRepository memberRepository;
     private final StoreRepository storeRepository;
     private final ScheduleRepository scheduleRepository;
-    private final AttendanceRequestRepository attendanceRequestRepository; // [New] 추가됨
 
     // 1. 출근 (Clock-In)
     public AttendanceDto.ClockInResponse clockIn(AttendanceDto.ClockInRequest request) {
@@ -229,49 +224,26 @@ public class AttendanceService {
 
         return attendanceRepository.save(attendance).getId();
     }
+    @Transactional
+    public void updateAttendance(Long attendanceId, String newValue) {
+        // 1. 근무 기록 찾기
+        Attendance attendance = attendanceRepository.findById(attendanceId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 근무 기록이 없습니다. ID=" + attendanceId));
 
-    // 8. 근무 기록 수정 요청 (Request Correction)
-    public Long requestCorrection(AttendanceDto.CorrectionRequest request) {
-        Attendance attendance = attendanceRepository.findById(request.getAttendanceId())
-                .orElseThrow(() -> new IllegalArgumentException("기록 없음"));
+        // 2. String("09:00") -> LocalTime 변환
+        // (주의: 프론트에서 "HH:mm" 형식으로 보낸다고 가정)
+        try {
+            LocalTime time = LocalTime.parse(newValue);
 
-        // "17:00 ~ 22:30" 형식 파싱
-        String[] times = request.getAfterTime().split("~");
-        LocalTime start = LocalTime.parse(times[0].trim());
-        LocalTime end = LocalTime.parse(times[1].trim());
+            // 3. 실제 수정 (출근 시간 수정인지 퇴근 시간 수정인지에 따라 로직이 다를 수 있음)
+            // 일단은 '퇴근 시간'을 업데이트하거나, 엔티티에 유연한 수정 메서드가 필요합니다.
+            // 여기서는 예시로 퇴근 시간을 수정한다고 가정합니다. (상황에 맞게 변경 필요!)
+            attendance.updateEndTime(time);
 
-        AttendanceRequest req = AttendanceRequest.builder()
-                .attendance(attendance)
-                .user(attendance.getUser())
-                .targetDate(LocalDate.parse(request.getTargetDate()))
-                .requestType(AttendanceRequestType.MODIFICATION)
-                .status(AttendanceRequestStatus.PENDING)
-                .beforeTime(request.getBeforeTime())
-                .afterTime(request.getAfterTime())
-                .reason(request.getReason())
-                .targetStartTime(start)
-                .targetEndTime(end)
-                .build();
-
-        return attendanceRequestRepository.save(req).getId();
-    }
-
-    // 9. 요청 처리 (승인/거절)
-    public void processRequest(Long requestId, String statusStr) {
-        AttendanceRequest req = attendanceRequestRepository.findById(requestId)
-                .orElseThrow(() -> new IllegalArgumentException("요청 없음"));
-
-        AttendanceRequestStatus status = AttendanceRequestStatus.valueOf(statusStr);
-        req.updateStatus(status); // 요청 상태 업데이트
-
-        // 승인(APPROVED)인 경우 -> 실제 Attendance 데이터 수정
-        if (status == AttendanceRequestStatus.APPROVED) {
-            Attendance attendance = req.getAttendance();
-            LocalDateTime newStart = LocalDateTime.of(req.getTargetDate(), req.getTargetStartTime());
-            LocalDateTime newEnd = LocalDateTime.of(req.getTargetDate(), req.getTargetEndTime());
-
-            // 상태를 OFF(정상 퇴근)로 변경하며 시간 업데이트
-            attendance.updateInfo(newStart, newEnd, AttendanceStatus.OFF);
+            System.out.println("✅ 근무 기록 수정 완료: " + time);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("시간 형식이 올바르지 않습니다. (예: 09:00) 입력값: " + newValue);
         }
     }
+
 }

@@ -85,4 +85,14 @@ public class Attendance {
         this.checkOutTime = end;
         this.status = status;
     }
+    //정정 요청 시 퇴근 '시간'만 수정하는 메서드
+    public void updateEndTime(java.time.LocalTime newTime) {
+        // 1. 날짜 결정 (기존 퇴근 날짜가 있으면 그거 쓰고, 없으면 출근 날짜 씀)
+        java.time.LocalDate targetDate = (this.checkOutTime != null)
+                ? this.checkOutTime.toLocalDate()
+                : this.checkInTime.toLocalDate();
+
+        // 2. 날짜 + 새로운 시간 합쳐서 저장 (예: 2024-05-20 + 18:00)
+        this.checkOutTime = java.time.LocalDateTime.of(targetDate, newTime);
+    }
 }

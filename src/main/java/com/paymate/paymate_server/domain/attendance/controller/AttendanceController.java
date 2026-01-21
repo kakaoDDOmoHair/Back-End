@@ -81,24 +81,5 @@ public class AttendanceController {
         return ResponseEntity.ok(Map.of("success", true, "data", Map.of("attendanceId", id, "status", "PENDING")));
     }
 
-    // 8. 근무 기록 수정 요청
-    @PostMapping("/requests")
-    public ResponseEntity<Map<String, Object>> requestCorrection(@RequestBody AttendanceDto.CorrectionRequest request) {
-        Long reqId = attendanceService.requestCorrection(request);
-        return ResponseEntity.ok(Map.of("success", true, "data", Map.of("requestId", reqId, "status", "PENDING")));
-    }
 
-    // 9. 요청 처리 (승인/거절)
-    @PatchMapping("/requests/{requestId}")
-    public ResponseEntity<Map<String, Object>> processRequest(
-            @PathVariable Long requestId, @RequestBody AttendanceDto.RequestProcess body) {
-
-        attendanceService.processRequest(requestId, body.getStatus());
-
-        return ResponseEntity.ok(Map.of(
-                "success", true,
-                "message", "처리 완료",
-                "data", Map.of("requestId", requestId, "finalStatus", body.getStatus())
-        ));
-    }
 }
