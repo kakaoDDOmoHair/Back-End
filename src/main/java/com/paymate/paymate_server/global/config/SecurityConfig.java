@@ -38,7 +38,15 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/users/login", "/api/v1/users/join").permitAll() // 로그인, 회원가입은 누구나 가능
                         .requestMatchers("/api/v1/users/password", "/api/v1/users/withdraw").permitAll()
                         .requestMatchers("/api/v1/users/me", "/api/v1/users/detail").permitAll()
+                        .requestMatchers("/api/v1/auth/**").permitAll()
+                        .requestMatchers("/api/v1/stores/**").permitAll()    // 매장 기능 허용
+                        .requestMatchers("/api/v1/contracts/**").permitAll() // 👈 추가: 계약서 기능도 허용!
+                        .requestMatchers("/api/v1/verification/**").permitAll()
+                        .requestMatchers("/api/v1/schedules/**").permitAll()
+                        .requestMatchers("/api/v1/salary/**").permitAll()
+                        .requestMatchers("/api/v1/modifications/**").authenticated()
                         .anyRequest().authenticated() // 그 외 모든 요청은 인증 필요
+
                 )
 
                 // 4. JWT 필터를 UsernamePasswordAuthenticationFilter 앞에 추가
