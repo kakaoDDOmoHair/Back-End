@@ -33,34 +33,7 @@ public class ScheduleController {
         return ResponseEntity.ok(scheduleService.getMonthlySchedule(storeId, year, month));
     }
 
-    // 3. 근무 스케줄 수정 요청 (알바생)
-    @PostMapping("/requests")
-    public ResponseEntity<Map<String, Object>> requestModification(@RequestBody ScheduleDto.ModificationRequest request) {
-        Map<String, Object> data = scheduleService.requestModification(request);
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
-        response.put("code", 200);
-        response.put("message", "수정 요청이 접수되었습니다.");
-        response.put("data", data);
-
-        return ResponseEntity.ok(response);
-    }
-
-    // 4. 근무 스케줄 수정 요청 처리 (사장님 승인/거절)
-    @PatchMapping("/requests/{requestId}")
-    public ResponseEntity<Map<String, Object>> handleRequest(
-            @PathVariable Long requestId,
-            @RequestBody ScheduleDto.HandleRequest request) {
-        Map<String, Object> data = scheduleService.handleModificationRequest(requestId, request);
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
-        response.put("message", "처리가 완료되었습니다."); // "승인되었습니다" 등 동적 처리 가능
-        response.put("data", data);
-
-        return ResponseEntity.ok(response);
-    }
 
     // 5. 주간 근무 시간표 조회 (사장님용)
     @GetMapping("/weekly")

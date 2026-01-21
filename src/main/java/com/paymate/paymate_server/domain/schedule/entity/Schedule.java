@@ -44,4 +44,10 @@ public class Schedule {
         this.startTime = startTime;
         this.endTime = endTime;
     }
+    public void updateStartTime(LocalTime newStartTime) {
+        this.startTime = newStartTime;
+    }
+    public void updateEndTime(LocalTime newEndTime) {
+        this.endTime = newEndTime;
+    }
 }

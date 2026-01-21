@@ -4,10 +4,7 @@ import com.paymate.paymate_server.domain.member.entity.User;
 import com.paymate.paymate_server.domain.member.repository.MemberRepository;
 import com.paymate.paymate_server.domain.schedule.dto.ScheduleDto;
 import com.paymate.paymate_server.domain.schedule.entity.Schedule;
-import com.paymate.paymate_server.domain.schedule.entity.ScheduleRequest;
-import com.paymate.paymate_server.domain.schedule.enums.ScheduleRequestStatus;
 import com.paymate.paymate_server.domain.schedule.repository.ScheduleRepository;
-import com.paymate.paymate_server.domain.schedule.repository.ScheduleRequestRepository;
 import com.paymate.paymate_server.domain.store.entity.Store;
 import com.paymate.paymate_server.domain.store.repository.StoreRepository;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.time.YearMonth;
 import java.time.format.TextStyle;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -27,7 +23,6 @@ import java.util.stream.Collectors;
 public class ScheduleService {
 
     private final ScheduleRepository scheduleRepository;
-    private final ScheduleRequestRepository scheduleRequestRepository;
     private final StoreRepository storeRepository;
     private final MemberRepository memberRepository;
 
@@ -66,53 +61,6 @@ public class ScheduleService {
                         .time(s.getStartTime() + "~" + s.getEndTime())
                         .build())
                 .collect(Collectors.toList());
-    }
-
-    // 3. 근무 스케줄 수정 요청 (알바생 -> 사장님)
-    @Transactional
-    public Map<String, Object> requestModification(ScheduleDto.ModificationRequest requestDto) {
-        Schedule schedule = scheduleRepository.findById(requestDto.getScheduleId())
-                .orElseThrow(() -> new IllegalArgumentException("스케줄 없음"));
-
-        ScheduleRequest request = ScheduleRequest.builder()
-                .schedule(schedule)
-                .requestType(requestDto.getRequestType())
-                .beforeTime(requestDto.getBeforeTime())
-                .afterTime(requestDto.getAfterTime())
-                .reason(requestDto.getReason())
-                .status(ScheduleRequestStatus.PENDING)
-                .build();
-
-        scheduleRequestRepository.save(request);
-
-        Map<String, Object> data = new HashMap<>();
-        data.put("requestId", request.getId());
-        data.put("status", "PENDING");
-        return data;
-    }
-
-    // 4. 근무 스케줄 수정 요청 처리 (사장님 승인/거절)
-    @Transactional
-    public Map<String, Object> handleModificationRequest(Long requestId, ScheduleDto.HandleRequest dto) {
-        ScheduleRequest request = scheduleRequestRepository.findById(requestId)
-                .orElseThrow(() -> new IllegalArgumentException("요청 내역 없음"));
-
-        request.updateStatus(dto.getStatus());
-
-        if (dto.getStatus() == ScheduleRequestStatus.APPROVED) {
-            Schedule schedule = request.getSchedule();
-            String[] times = request.getAfterTime().split("~");
-            LocalTime newStart = LocalTime.parse(times[0].trim());
-            LocalTime newEnd = LocalTime.parse(times[1].trim());
-
-            schedule.updateTime(schedule.getWorkDate(), newStart, newEnd);
-        }
-
-        Map<String, Object> data = new HashMap<>();
-        data.put("requestId", request.getId());
-        data.put("status", dto.getStatus().toString());
-        data.put("processedAt", request.getProcessedAt());
-        return data;
     }
 
     // 5. 주간 근무 시간표 조회 (사장님용)
@@ -179,5 +127,24 @@ public class ScheduleService {
         data.put("scheduleId", schedule.getId());
         data.put("updatedAt", java.time.LocalDateTime.now());
         return data;
+    }
+    @Transactional
+    public void updateSchedule(Long scheduleId, String newValue) {
+        // 1. 스케줄 찾기
+        Schedule schedule = scheduleRepository.findById(scheduleId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 스케줄이 없습니다. ID=" + scheduleId));
+
+        try {
+            // 2. 문자열("09:00") -> LocalTime 변환
+            LocalTime time = LocalTime.parse(newValue);
+
+            // 3. 방금 만든 엔티티 메서드 호출! (여기서는 시작 시간을 바꾼다고 가정)
+            schedule.updateStartTime(time);
+
+            System.out.println("✅ 스케줄 시작 시간이 수정되었습니다: " + time);
+
+        } catch (Exception e) {
+            throw new IllegalArgumentException("시간 형식이 올바르지 않습니다. (예: 09:00) 입력값: " + newValue);
+        }
     }
 }
