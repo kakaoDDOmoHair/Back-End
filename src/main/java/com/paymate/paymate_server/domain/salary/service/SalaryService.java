@@ -58,11 +58,14 @@ public class SalaryService {
     private final StoreRepository storeRepository;
     private final AesUtil aesUtil;
     private final AccountRepository accountRepository;
+
+    // [추가] 고급 기능(PDF, 메일, 알림)을 위한 의존성
     private final ContractRepository contractRepository;
     private final JavaMailSender mailSender;
     private final TemplateEngine templateEngine;
     private final NotificationService notificationService;
 
+    // [추가] 주휴수당 계산 로직
     private long calculateWeeklyHolidayAllowance(List<Attendance> attendances, int hourlyWage) {
         Map<Integer, Double> weeklyHours = attendances.stream()
                 .collect(Collectors.groupingBy(
@@ -84,14 +87,17 @@ public class SalaryService {
         SalaryPayment payment = salaryPaymentRepository.findById(paymentId)
                 .orElseThrow(() -> new IllegalArgumentException("해당 정산 건을 찾을 수 없습니다."));
 
-        payment.completePayment();
+        payment.completePayment(); // 상태 변경
+
+        // [업그레이드] 실제 이메일 발송
         sendPayslipEmail(payment.getId());
 
+        // [추가] 알림 발송
         notificationService.send(
                 payment.getUser(),
                 NotificationType.PAYMENT,
-                "급여 입금 완료 💰",
-                String.format("%s 매장에서 급여(%d원)가 입금되었습니다.", payment.getStore().getName(), payment.getTotalAmount())
+                "급여 정산 완료",
+                String.format("%s 매장의 급여 정산이 완료되었습니다.", payment.getStore().getName())
         );
     }
 
@@ -114,15 +120,12 @@ public class SalaryService {
     public String completePayment(Long paymentId, Long accountId) {
         SalaryPayment payment = salaryPaymentRepository.findById(paymentId)
                 .orElseThrow(() -> new IllegalArgumentException("정산 내역 없음"));
-
         if (payment.getStatus() == PaymentStatus.COMPLETED) {
             throw new IllegalStateException("이미 정산 완료된 내역입니다.");
         }
-
         User worker = payment.getUser();
         Account targetAccount = accountRepository.findById(accountId)
                 .orElseThrow(() -> new IllegalArgumentException("계좌 정보 없음"));
-
         if (!targetAccount.getUser().getId().equals(worker.getId())) {
             throw new IllegalArgumentException("이 계좌는 해당 알바생의 계좌가 아닙니다.");
         }
@@ -131,16 +134,18 @@ public class SalaryService {
         targetAccount.deposit(amount);
         payment.completePayment();
 
+        // [추가] 알림 발송
         notificationService.send(
                 worker,
                 NotificationType.PAYMENT,
                 "급여 입금 완료 💰",
-                String.format("급여 %d원이 입금되었습니다. (잔액: %d원)", amount, targetAccount.getBalance())
+                String.format("급여 %d원이 입금되었습니다.", amount)
         );
 
-        return String.format("[기존내역 확정] %s님께 %d원 입금 완료! (잔액: %d원)", worker.getName(), amount, targetAccount.getBalance());
+        return String.format("[기존내역 확정] %s님께 %d원 입금 완료!", worker.getName(), amount);
     }
 
+    // [수정] 주휴수당 및 세금 포함 계산으로 업그레이드
     @Transactional(readOnly = true)
     public SalaryDto.EstimatedResponse getEstimatedSalary(Long storeId, Long userId, int year, int month) {
         User user = memberRepository.findById(userId).orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
@@ -151,6 +156,8 @@ public class SalaryService {
         List<Attendance> attendances = attendanceRepository.findAllByUserAndCheckInTimeBetween(user, start.atStartOfDay(), end.atTime(23, 59, 59));
 
         double totalHours = attendances.stream().mapToDouble(Attendance::calculateTotalHours).sum();
+
+        // 상세 계산 적용
         long baseAmount = Math.round(totalHours * hourlyWage);
         long weeklyAllowance = calculateWeeklyHolidayAllowance(attendances, hourlyWage);
         long rawAmount = baseAmount + weeklyAllowance;
@@ -161,6 +168,10 @@ public class SalaryService {
                 .period(start.toString() + " ~ " + LocalDate.now().toString())
                 .amount(finalAmount)
                 .totalHours(totalHours)
+                // 추가 필드 채우기
+                .baseSalary(baseAmount)
+                .weeklyAllowance(weeklyAllowance)
+                .tax(tax)
                 .build();
     }
 
@@ -189,6 +200,7 @@ public class SalaryService {
                 .id(p.getId()).month(p.getPeriodStart().getMonthValue() + "월").amount(p.getTotalAmount()).status(p.getStatus().toString()).build()).collect(Collectors.toList());
     }
 
+    // [업그레이드] 실제 PDF 생성 및 이메일 전송 로직 적용
     @Async
     public void sendPayslipEmail(Long paymentId) {
         SalaryPayment payment = salaryPaymentRepository.findById(paymentId)
@@ -288,11 +300,12 @@ public class SalaryService {
         newPayment.completePayment();
         salaryPaymentRepository.save(newPayment);
 
+        // [추가] 알림 발송
         notificationService.send(
                 worker,
                 NotificationType.PAYMENT,
                 "급여 입금 완료 💰",
-                String.format("%d월 급여 %d원이 입금되었습니다. (잔액: %d원)", month, estimate.getAmount(), targetAccount.getBalance())
+                String.format("%d월 급여 %d원이 입금되었습니다.", month, estimate.getAmount())
         );
 
         String displayAccount;
@@ -300,6 +313,7 @@ public class SalaryService {
         return String.format("[%s] %s님께 %d원 정산 완료! (계좌: %s, 잔액: %d원)", store.getName(), worker.getName(), estimate.getAmount(), displayAccount, targetAccount.getBalance());
     }
 
+    // [추가] 명세서 데이터 미리보기 메서드
     @Transactional(readOnly = true)
     public SalaryDto.EstimatedResponse getPayslipPreview(Long paymentId) {
         SalaryPayment payment = salaryPaymentRepository.findById(paymentId)
@@ -322,6 +336,7 @@ public class SalaryService {
                 .build();
     }
 
+    // [추가] HTML 미리보기 메서드
     @Transactional(readOnly = true)
     public String getPayslipHtmlPreview(Long paymentId) {
         SalaryPayment payment = salaryPaymentRepository.findById(paymentId)
