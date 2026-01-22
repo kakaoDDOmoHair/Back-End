@@ -33,10 +33,10 @@ public class SalaryDto {
         private Long amount;
         private Double totalHours;
 
-        // 우리가 추가한 필드들
-        private Long baseSalary;
-        private Long weeklyAllowance;
-        private Long tax;
+        // ▼▼▼ [추가] 상세 명세서를 위한 필드들 ▼▼▼
+        private Long baseSalary;      // 기본급
+        private Long weeklyAllowance; // 주휴수당
+        private Long tax;             // 세금 (3.3%)
     }
 
     @Getter
