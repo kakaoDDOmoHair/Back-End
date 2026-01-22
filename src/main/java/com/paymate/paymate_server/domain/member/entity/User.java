@@ -52,6 +52,8 @@ public class User {
     private UserStatus status = UserStatus.ACTIVE;
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    // 👇 [수정 후] 이렇게 바꾸세요!
+    @Builder.Default // 👈 이 어노테이션 추가
     private List<Account> accounts = new ArrayList<>();
 
     @CreationTimestamp
@@ -63,4 +65,13 @@ public class User {
     public void updateStatus(UserStatus status) {
         this.status = status;
     }
+
+
+    // 👇 [추가] FCM 토큰 필드 (DB 컬럼으로 자동 생성됨)
+    private String fcmToken;
+
+    // 👇 [추가] 토큰 업데이트 메서드 (로그인 시 프론트가 준 토큰 저장용)
+    public void updateFcmToken(String token) {
+        this.fcmToken = token;}
+
 }

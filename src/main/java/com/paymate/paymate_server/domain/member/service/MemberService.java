@@ -93,4 +93,14 @@ public class MemberService {
 
         return MemberDetailResponseDto.of(user);
     }
+
+    // 👇 [추가] 이메일로 유저를 찾아서 토큰 저장
+    @Transactional
+    public void updateFcmToken(String email, String token) {
+        // 이메일로 유저 조회 (MemberRepository에 findByEmail이 있다고 가정)
+        User user = memberRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다: " + email));
+
+        user.updateFcmToken(token);
+    }
 }

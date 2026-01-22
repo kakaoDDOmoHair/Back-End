@@ -6,6 +6,8 @@ import com.paymate.paymate_server.domain.member.service.MemberService;
 import com.paymate.paymate_server.domain.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -91,5 +93,22 @@ public class MemberController {
     @GetMapping("/detail")
     public ResponseEntity<MemberDetailResponseDto> getMemberDetail(@RequestParam String email) { // 📍 파라미터 변경
         return ResponseEntity.ok(memberService.getMemberDetail(email));
+    }
+
+    // 👇 [수정된 코드] UserDetailsImpl 대신 UserDetails 사용
+    @PatchMapping("/fcm-token")
+    public ResponseEntity<?> updateFcmToken(@AuthenticationPrincipal UserDetails userDetails,
+                                            @RequestBody Map<String, String> body) {
+        String token = body.get("token");
+
+        if (token == null || token.isEmpty()) {
+            return ResponseEntity.badRequest().body("토큰이 비어있습니다.");
+        }
+
+        // userDetails.getUsername()은 로그인한 사람의 이메일(ID)을 가져옵니다.
+        // 이 이메일로 서비스를 호출합니다.
+        memberService.updateFcmToken(userDetails.getUsername(), token);
+
+        return ResponseEntity.ok("FCM 토큰 저장 완료");
     }
 }
