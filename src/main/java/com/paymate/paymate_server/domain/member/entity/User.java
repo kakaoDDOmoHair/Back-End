@@ -31,6 +31,10 @@ public class User {
     @Column(nullable = false, length = 50)
     private String name;
 
+    // ▼▼▼ [여기 추가했습니다!] ▼▼▼
+    @Column(name = "birth_date", length = 20)
+    private String birthDate; // 생년월일 (예: "2002-10-22")
+
     @Column(length = 20)
     private String phone;
 
@@ -52,26 +56,26 @@ public class User {
     private UserStatus status = UserStatus.ACTIVE;
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
-    // 👇 [수정 후] 이렇게 바꾸세요!
-    @Builder.Default // 👈 이 어노테이션 추가
+    @Builder.Default
     private List<Account> accounts = new ArrayList<>();
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+
     public void updatePassword(String encodedPassword) {
         this.password = encodedPassword;
     }
+
     public void updateStatus(UserStatus status) {
         this.status = status;
     }
 
-
-    // 👇 [추가] FCM 토큰 필드 (DB 컬럼으로 자동 생성됨)
+    // FCM 토큰 필드
     private String fcmToken;
 
-    // 👇 [추가] 토큰 업데이트 메서드 (로그인 시 프론트가 준 토큰 저장용)
+    // 토큰 업데이트 메서드
     public void updateFcmToken(String token) {
-        this.fcmToken = token;}
-
+        this.fcmToken = token;
+    }
 }
