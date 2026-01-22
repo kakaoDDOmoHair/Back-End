@@ -10,4 +10,5 @@ import lombok.*;
 public class JoinResponseDto {
     private Long userId;
     private String message;
+
 }
