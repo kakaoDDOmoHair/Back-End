@@ -22,6 +22,12 @@ public class User {
     @Column(name = "user_id")
     private Long id;
 
+    // --- [핵심 추가] 로그인용 아이디 ---
+    // unique = true: 아이디는 중복될 수 없음
+    @Column(nullable = false, unique = true, length = 30)
+    private String username;
+
+    // 이메일은 이제 '로그인용'이 아니라 '연락처/알림용'으로 사용
     @Column(nullable = false, length = 100)
     private String email;
 
@@ -37,6 +43,9 @@ public class User {
 
     @Column(length = 20)
     private String phone;
+
+    @Column(name = "birth_date", length = 6)
+    private String birthDate; // 생년월일 (예: "980101")
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

@@ -6,7 +6,7 @@ import lombok.NoArgsConstructor;
 @Getter                        // 3. 어노테이션은 클래스 바로 위
 @NoArgsConstructor
 public class WithdrawRequestDto {
-    private String email;
+    private String username;
     private String password;
     private boolean isAgreed;
 }

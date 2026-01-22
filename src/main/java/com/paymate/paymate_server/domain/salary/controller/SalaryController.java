@@ -18,43 +18,48 @@ public class SalaryController {
 
     private final SalaryService salaryService;
 
-    // 1. 계좌 정보 조회 (사장님이 이체 버튼 클릭 시 복호화하여 반환)
+    // 1. 계좌 정보 조회
     @GetMapping("/{paymentId}/account")
     public ResponseEntity<SalaryDto.AccountResponse> getAccountInfo(@PathVariable Long paymentId) {
         return ResponseEntity.ok(salaryService.getAccountInfo(paymentId));
     }
 
-    // 2. 이체 완료 확정 (사장님이 입금 후 '완료' 처리)
+    // 2. 이체 완료 확정
     @PatchMapping("/{paymentId}/complete")
     public ResponseEntity<Map<String, String>> completePayment(
             @PathVariable Long paymentId,
-            @RequestParam Long accountId) { // 👈 입금받을 계좌 ID를 추가로 받음
+            @RequestParam Long accountId) {
         String message = salaryService.completePayment(paymentId, accountId);
         return ResponseEntity.ok(Map.of("status", "COMPLETED", "message", message));
     }
 
-    // 3. 명세서 이메일 발송 (PDF 생성 및 전송 트리거)
+    // 3. 명세서 이메일 발송 (프론트 버튼 전용으로 수정됨)
     @PostMapping("/{paymentId}/payslip/send")
-    public ResponseEntity<Map<String, Boolean>> sendPayslip(@PathVariable Long paymentId) {
-        salaryService.sendPayslipEmail(paymentId); // @Async로 비동기 처리 권장
-        return ResponseEntity.ok(Map.of("sent", true));
+    public ResponseEntity<Map<String, Object>> sendPayslip(@PathVariable Long paymentId) {
+        // 비동기(@Async)로 메일 발송 트리거
+        salaryService.sendPayslipEmail(paymentId);
+
+        return ResponseEntity.ok(Map.of(
+                "sent", true,
+                "message", "명세서 발송 요청이 접수되었습니다. 잠시 후 메일함을 확인해주세요.",
+                "paymentId", paymentId
+        ));
     }
 
-    // 4. 급여 내역 조회 (알바생용 월별 히스토리)
+    // 4. 급여 내역 조회
     @GetMapping("/history")
     public ResponseEntity<List<SalaryDto.HistoryResponse>> getSalaryHistory(@RequestParam Long userId) {
-        // 실제 운영 시에는 @AuthenticationPrincipal 등으로 현재 유저 ID를 가져옵니다.
         return ResponseEntity.ok(salaryService.getSalaryHistory(userId));
     }
 
-    // 5. 정산 요청하기 (알바생이 사장님에게 요청)
+    // 5. 정산 요청하기
     @PostMapping("/request")
     public ResponseEntity<Map<String, String>> requestPayment(@RequestBody Map<String, Long> body) {
         salaryService.requestPayment(body.get("paymentId"));
         return ResponseEntity.ok(Map.of("status", "success", "message", "요청이 전송되었습니다."));
     }
 
-    // 6. 예상 급여 조회 (이번 달 실시간 예상치)
+    // 6. 예상 급여 조회 (상세 내역 포함됨)
     @GetMapping("/estimated")
     public ResponseEntity<SalaryDto.EstimatedResponse> getEstimatedSalary(
             @RequestParam Long storeId,
@@ -64,7 +69,7 @@ public class SalaryController {
         return ResponseEntity.ok(salaryService.getEstimatedSalary(storeId, userId, year, month));
     }
 
-    // 7. 급여 목록 조회 (사장님용 해당 월 전체 현황)
+    // 7. 급여 목록 조회
     @GetMapping("/monthly")
     public ResponseEntity<Map<String, Object>> getMonthlySalaries(
             @RequestParam Long storeId,
@@ -86,7 +91,7 @@ public class SalaryController {
     // 9. 정산하기
     @PostMapping("/execute")
     public ResponseEntity<Map<String, String>> executeNewPayment(
-            @RequestBody SalaryDto.ExecuteRequest request) { // 👈 @RequestParam 대신 @RequestBody 사용
+            @RequestBody SalaryDto.ExecuteRequest request) {
 
         String message = salaryService.executeNewPayment(
                 request.getStoreId(),
@@ -97,4 +102,11 @@ public class SalaryController {
         );
         return ResponseEntity.ok(Map.of("status", "SUCCESS", "message", message));
     }
-}
+
+    @GetMapping(value = "/{paymentId}/preview", produces = "text/html; charset=utf-8")
+    public ResponseEntity<String> getPayslipPreview(@PathVariable Long paymentId) {
+        // Service에서 Thymeleaf로 구운(렌더링한) HTML 문자열을 가져옵니다.
+        String htmlContent = salaryService.getPayslipHtmlPreview(paymentId);
+        return ResponseEntity.ok(htmlContent);
+    }
+} // 클래스 끝 중괄호
