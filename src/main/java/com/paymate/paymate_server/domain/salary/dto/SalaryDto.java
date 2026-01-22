@@ -32,7 +32,8 @@ public class SalaryDto {
         private String period;
         private Long amount;
         private Double totalHours;
-        // 추가된 필드들
+
+        // 우리가 추가한 필드들
         private Long baseSalary;
         private Long weeklyAllowance;
         private Long tax;
