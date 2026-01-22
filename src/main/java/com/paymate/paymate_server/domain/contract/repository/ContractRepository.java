@@ -24,5 +24,6 @@ public interface ContractRepository extends JpaRepository<Contract, Long> {
                                 @Param("status") ContractStatus status,
                                 Pageable pageable);
 
+    // 충돌의 원인이었던 부분! 우리가 추가한 메서드입니다.
     Optional<Contract> findTopByUserAndStoreOrderByWorkStartDateAsc(User user, Store store);
 }
