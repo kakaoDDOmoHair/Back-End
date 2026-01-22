@@ -13,18 +13,19 @@ import lombok.NoArgsConstructor;
 public class MemberDetailResponseDto {
 
     private Long id;
+    private String username; // [추가] 아이디
     private String email;
     private String name;
     private String role;
     // (여기에 급여, 근무시간 등 상세 정보 필드가 더 있을 수 있음)
 
-    // 📍 이 메서드가 없어서 에러가 난 것입니다! 아래 코드를 복사해서 넣어주세요.
     public static MemberDetailResponseDto of(User user) {
         return MemberDetailResponseDto.builder()
                 .id(user.getId())
+                .username(user.getUsername()) // [추가] 엔티티에서 아이디 가져오기
                 .email(user.getEmail())
                 .name(user.getName())
-                .role(user.getRole().name()) // Enum이라면 .name() 또는 .toString()
+                .role(user.getRole().name())
                 .build();
     }
 }

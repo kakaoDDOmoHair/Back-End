@@ -5,7 +5,6 @@ import com.paymate.paymate_server.domain.member.enums.UserStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
-import java.time.LocalDate; // [추가] 날짜 타입을 위해 필요
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,6 +22,12 @@ public class User {
     @Column(name = "user_id")
     private Long id;
 
+    // --- [핵심 추가] 로그인용 아이디 ---
+    // unique = true: 아이디는 중복될 수 없음
+    @Column(nullable = false, unique = true, length = 30)
+    private String username;
+
+    // 이메일은 이제 '로그인용'이 아니라 '연락처/알림용'으로 사용
     @Column(nullable = false, length = 100)
     private String email;
 
@@ -35,11 +40,8 @@ public class User {
     @Column(length = 20)
     private String phone;
 
-    // --- [추가된 필드 시작] ---
     @Column(name = "birth_date", length = 6)
     private String birthDate; // 생년월일 (예: "980101")
-
-    // --- [추가된 필드 끝] ---
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

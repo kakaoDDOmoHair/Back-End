@@ -9,5 +9,5 @@ import lombok.*;
 public class PasswordChangeResponseDto {
     private boolean success;
     private String message;
-    private String email;
+    private String username;
 }
