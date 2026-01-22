@@ -27,14 +27,19 @@ public class SalaryDto {
         private String status; // WAITING, REQUESTED, COMPLETED
     }
 
-    // 3. 예상 급여 조회 응답 (알바생 실시간)
+    // 3. 예상 급여 조회 응답 (알바생 실시간) - [수정됨: 필드 추가]
     @Getter
     @Builder
     @AllArgsConstructor
     public static class EstimatedResponse {
         private String period; // "2026.01.01~"
-        private Long amount;
+        private Long amount;   // 실수령액
         private Double totalHours;
+
+        // ▼▼▼ [오류 해결을 위해 추가한 부분] ▼▼▼
+        private Long baseSalary;      // 기본급
+        private Long weeklyAllowance; // 주휴수당
+        private Long tax;             // 세금 (3.3%)
     }
 
     // 4. 월별 급여 현황 응답 (사장님용 리스트)
@@ -59,7 +64,8 @@ public class SalaryDto {
         private Map<String, Double> summary; // 날짜별 시간 요약
         private List<MonthlyResponse> list;
     }
-    @Getter // 👈 이게 있어야 getStoreId() 등을 호출할 수 있습니다.
+
+    @Getter
     @NoArgsConstructor
     public static class ExecuteRequest {
         private Long storeId;
