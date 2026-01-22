@@ -31,27 +31,32 @@ public class AuthService {
 
     private final MemberRepository memberRepository;
     private final RefreshTokenRepository refreshTokenRepository;
-    private final VerificationCodeRepository verificationCodeRepository; // [NEW] 추가됨
+    private final VerificationCodeRepository verificationCodeRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
 
     /**
-     * 로그인
+     * [수정] 로그인 (Email -> Username)
      */
     @Transactional
     public TokenResponseDto login(LoginRequestDto request) {
-        User user = memberRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new IllegalArgumentException("가입되지 않은 이메일입니다."));
+        // 1. 아이디로 사용자 찾기 (기존: findByEmail)
+        User user = memberRepository.findByUsername(request.getUsername())
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 아이디입니다."));
 
+        // 2. 비밀번호 확인
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new IllegalArgumentException("비밀번호가 일치하지 않습니다.");
         }
 
+        // 3. 인증 객체 생성 (이제 주체는 Username)
         Authentication authentication = getAuthentication(user);
         TokenInfo tokenInfo = jwtTokenProvider.generateToken(authentication);
 
+        // 4. 리프레시 토큰 저장
+        // (RefreshToken 엔티티의 필드명이 email이라도, 실제로는 username(식별자)을 저장합니다)
         refreshTokenRepository.save(RefreshToken.builder()
-                .email(user.getEmail())
+                .email(user.getUsername()) // [중요] 키값을 아이디로 저장
                 .token(tokenInfo.getRefreshToken())
                 .build());
 
@@ -74,6 +79,7 @@ public class AuthService {
 
         Authentication authentication = jwtTokenProvider.getAuthentication(request.getAccessToken());
 
+        // 저장된 토큰 찾기 (저장할 때 username으로 저장했으므로, 여기서도 name으로 찾음)
         RefreshToken refreshToken = refreshTokenRepository.findByEmail(authentication.getName())
                 .orElseThrow(() -> new IllegalArgumentException("로그아웃 된 사용자입니다."));
 
@@ -88,7 +94,6 @@ public class AuthService {
         return TokenResponseDto.builder()
                 .accessToken(newTokenInfo.getAccessToken())
                 .refreshToken(newTokenInfo.getRefreshToken())
-                // Role 정보가 문자열로 박히는 것 방지 (Authentication에서 파싱 필요 시 수정 가능)
                 .role(authentication.getAuthorities().toString().replaceAll("[\\[\\]]", ""))
                 .name(authentication.getName())
                 .build();
@@ -103,47 +108,46 @@ public class AuthService {
             throw new IllegalArgumentException("잘못된 요청입니다.");
         }
         Authentication authentication = jwtTokenProvider.getAuthentication(request.getAccessToken());
+
+        // 아이디(Username) 기반으로 삭제
         refreshTokenRepository.findByEmail(authentication.getName())
                 .ifPresent(refreshTokenRepository::delete);
     }
 
     // =========================================================================
-    // ▼ [NEW] 새로 추가된 기능들 (ID 찾기, 비번 검증, 계좌 인증)
+    // ▼ [NEW] ID 찾기, 비번 검증, 계좌 인증
     // =========================================================================
 
     /**
-     * [NEW] 현재 비밀번호 검증 (회원탈퇴 전 본인 확인용)
+     * [수정] 현재 비밀번호 검증 (Email -> Username)
      */
-    public boolean verifyPassword(String email, PasswordVerifyRequestDto request) {
-        User user = memberRepository.findByEmail(email)
+    public boolean verifyPassword(String username, PasswordVerifyRequestDto request) {
+        User user = memberRepository.findByUsername(username)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
 
         return passwordEncoder.matches(request.getPassword(), user.getPassword());
     }
 
     /**
-     * [NEW] 계좌 실명 인증 (Mock - 가짜 구현)
+     * [유지] 계좌 실명 인증 (Mock)
      */
     public AccountVerifyResponseDto verifyAccount(AccountVerifyRequestDto request) {
-        // 실제로는 오픈뱅킹 API를 호출해야 함. 여기서는 테스트용 로직 적용.
-        // 예금주 이름이 "오류"인 경우만 실패 처리
         if ("오류".equals(request.getOwnerName())) {
             throw new IllegalArgumentException("계좌 인증에 실패했습니다. (예금주 불일치)");
         }
 
         return AccountVerifyResponseDto.builder()
-                .bankName("신한은행") // 가짜 은행명 고정
+                .bankName("신한은행")
                 .ownerName(request.getOwnerName())
-                .verificationToken(UUID.randomUUID().toString()) // 임의의 인증 토큰 생성
+                .verificationToken(UUID.randomUUID().toString())
                 .build();
     }
 
     /**
-     * [NEW] ID 찾기 - 인증번호 발송 (콘솔 출력 Mock)
+     * [유지] ID 찾기 - 인증번호 발송 (이메일로 찾는 것이므로 Email 유지)
      */
     @Transactional
     public void sendVerificationCode(String email, String name) {
-        // 1. 사용자 확인
         User user = memberRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("가입되지 않은 이메일입니다."));
 
@@ -151,17 +155,14 @@ public class AuthService {
             throw new IllegalArgumentException("이름이 일치하지 않습니다.");
         }
 
-        // 2. 인증번호 생성 (6자리 난수)
         String code = String.valueOf(100000 + new Random().nextInt(900000));
 
-        // 3. DB에 저장 (3분 유효)
         verificationCodeRepository.save(VerificationCode.builder()
                 .email(email)
                 .code(code)
-                .expiryDate(LocalDateTime.now().plusMinutes(3)) // 3분 뒤 만료
+                .expiryDate(LocalDateTime.now().plusMinutes(3))
                 .build());
 
-        // 4. 메일 발송 대신 콘솔 출력
         System.out.println("=========================================");
         System.out.println("[PayMate 이메일 발송 Mock]");
         System.out.println("수신자: " + email);
@@ -170,17 +171,15 @@ public class AuthService {
     }
 
     /**
-     * [NEW] ID 찾기 - 인증번호 검증 및 마스킹된 ID 반환
+     * [유지] ID 찾기 - 인증번호 검증 및 ID 반환
      */
     @Transactional
     public String verifyCodeAndGetId(String email, String code) {
-        // 1. 코드 조회
         VerificationCode savedInfo = verificationCodeRepository.findById(email)
                 .orElseThrow(() -> new IllegalArgumentException("인증번호가 만료되었거나 요청되지 않았습니다."));
 
-        // 2. 만료 및 일치 여부 확인
         if (savedInfo.isExpired()) {
-            verificationCodeRepository.delete(savedInfo); // 만료된 데이터 삭제
+            verificationCodeRepository.delete(savedInfo);
             throw new IllegalArgumentException("인증번호가 만료되었습니다.");
         }
 
@@ -188,34 +187,38 @@ public class AuthService {
             throw new IllegalArgumentException("인증번호가 일치하지 않습니다.");
         }
 
-        // 3. 인증 성공 시, 마스킹된 ID 생성 (예: tes***@gmail.com)
-        int atIndex = email.indexOf("@");
-        String prefix = email.substring(0, atIndex);
-        String domain = email.substring(atIndex);
+        // [수정] 이메일로 유저를 찾아서 -> 진짜 아이디(Username)를 반환해야 함!
+        User user = memberRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("사용자 정보가 없습니다."));
 
-        if (prefix.length() > 3) {
-            prefix = prefix.substring(0, 3) + "***";
+        String username = user.getUsername();
+
+        // 아이디 마스킹 처리 (예: goji***)
+        if (username.length() > 3) {
+            username = username.substring(0, 3) + "***";
         } else {
-            prefix = prefix + "***";
+            username = username + "***";
         }
 
-        // 4. 사용된 코드 삭제
         verificationCodeRepository.delete(savedInfo);
-
-        return prefix + domain;
+        return username; // 마스킹된 아이디 반환
     }
 
     // =========================================================================
 
-    // (편의 메서드) User -> Authentication 변환
+    // [수정] User -> Authentication 변환 (Email -> Username)
     private Authentication getAuthentication(User user) {
         Collection<GrantedAuthority> authorities = new ArrayList<>();
         authorities.add(new SimpleGrantedAuthority(user.getRole().name()));
-        return new UsernamePasswordAuthenticationToken(user.getEmail(), null, authorities);
+        // Principal을 username으로 설정
+        return new UsernamePasswordAuthenticationToken(user.getUsername(), null, authorities);
     }
+
+    /**
+     * [유지] 비밀번호 재설정용 유저 확인 (이메일 기반)
+     */
     @Transactional
     public void checkUserForReset(PasswordResetCheckRequestDto request) {
-        // 이름, 이메일 일치 확인
         User user = memberRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new IllegalArgumentException("가입되지 않은 이메일입니다."));
 
@@ -223,22 +226,17 @@ public class AuthService {
             throw new IllegalArgumentException("사용자 정보가 일치하지 않습니다.");
         }
 
-        // 인증번호 생성 및 저장 (기존 메서드 재활용!)
-        // 기존 sendVerificationCode는 void라 내부 로직을 가져오거나,
-        // 여기서 바로 저장 로직을 써도 됩니다. 깔끔하게 기존 로직을 호출하는 방식은 아래와 같습니다.
+        // 아이디 일치 여부도 체크하고 싶다면 DTO에 아이디 추가 후 여기서 비교 가능
+        // if (!user.getUsername().equals(request.getUsername())) ...
 
-        // (단, 기존 sendVerificationCode가 public이면 바로 호출 가능)
         this.sendVerificationCode(request.getEmail(), request.getName());
     }
 
     /**
-     * 2. 코드 검증 후 '리셋 토큰' 발급 (POST /verify-code)
+     * [유지] 코드 검증 및 리셋 토큰 발급
      */
     @Transactional
     public String verifyCodeForReset(PasswordResetVerifyRequestDto request) {
-        // 기존 인증번호 검증 로직 활용 (마스킹 ID 반환하는 메서드 대신, 검증만 하는 로직이 필요하지만)
-        // 여기서는 코드를 직접 조회해서 검증하겠습니다.
-
         VerificationCode savedInfo = verificationCodeRepository.findById(request.getEmail())
                 .orElseThrow(() -> new IllegalArgumentException("인증번호가 만료되었거나 존재하지 않습니다."));
 
@@ -250,38 +248,32 @@ public class AuthService {
             throw new IllegalArgumentException("인증번호가 일치하지 않습니다.");
         }
 
-        // 인증 성공! 사용된 코드 삭제
         verificationCodeRepository.delete(savedInfo);
 
-        // ★중요★ 비밀번호 변경 권한이 담긴 'Reset Token' 발급
+        // 리셋 토큰 발급 (이메일 기준)
         return jwtTokenProvider.createResetToken(request.getEmail());
     }
 
     /**
-     * 3. 진짜 비밀번호 변경 (PATCH /password)
+     * [유지] 비밀번호 변경
      */
     @Transactional
     public void resetPassword(String resetToken, String newPassword) {
-        // 1. 리셋 토큰 유효성 검사
         if (!jwtTokenProvider.validateToken(resetToken)) {
             throw new IllegalArgumentException("유효하지 않거나 만료된 토큰입니다.");
         }
 
-        // 2. 토큰에서 이메일 추출
         Authentication authentication = jwtTokenProvider.getAuthentication(resetToken);
-        String email = authentication.getName();
+        String email = authentication.getName(); // 리셋 토큰은 이메일로 만들었음
 
-        // 3. 유저 조회
         User user = memberRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
 
-        // 4. 비밀번호 암호화 및 변경
         user.updatePassword(passwordEncoder.encode(newPassword));
 
-        // 5. [중요] 기존 세션 만료 처리 (모든 기기에서 로그아웃)
-        // 비밀번호가 바뀌었으니, 기존에 발급된 Refresh Token을 DB에서 삭제합니다.
-        refreshTokenRepository.findByEmail(email)
+        // [중요] 비밀번호 변경 시 모든 세션 로그아웃
+        // RefreshToken 테이블에서 이 유저(Username 키)의 토큰을 지워야 함
+        refreshTokenRepository.findByEmail(user.getUsername()) // 키값은 Username임
                 .ifPresent(refreshTokenRepository::delete);
     }
-
 }
