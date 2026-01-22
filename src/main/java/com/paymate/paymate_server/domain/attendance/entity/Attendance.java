@@ -64,35 +64,52 @@ public class Attendance {
         this.lon = lon;
     }
 
-    // 2. 근무 시간 계산 (분 단위 -> 시간 단위 변환)
+    // 2. 근무 시간 계산 (법정 휴게시간 자동 차감 적용)
     public double calculateTotalHours() {
         if (checkInTime == null || checkOutTime == null) return 0.0;
 
-        long minutes = Duration.between(checkInTime, checkOutTime).toMinutes();
+        // 전체 체류 시간 계산 (분 단위)
+        long totalMinutes = java.time.Duration.between(checkInTime, checkOutTime).toMinutes();
+        double rawHours = totalMinutes / 60.0;
 
-        // 휴게 시간이 있다면 제외
-        if (breakTime != null) {
-            minutes -= breakTime;
+        // 법정 휴게시간 계산 (무급)
+        // 8시간 근무(총 9시간 체류) 시 1시간, 4시간 근무(총 4.5시간 체류) 시 30분 차감
+        double autoBreakMinutes = 0;
+        if (rawHours >= 9.0) {
+            autoBreakMinutes = 60; // 1시간
+        } else if (rawHours >= 4.5) {
+            autoBreakMinutes = 30; // 30분
         }
 
+        // 실제 근무 분 계산 (전체 분 - 자동 휴게분 - 수동 breakTime 필드가 있다면 추가 차감)
+        long finalMinutes = totalMinutes - (long)autoBreakMinutes;
+
+        // 만약 엔티티에 별도의 breakTime 필드가 있다면 그것도 함께 고려 (선택 사항)
+    /*
+    if (this.breakTime != null) {
+        finalMinutes -= this.breakTime;
+    }
+    */
+
         // 소수점 첫째 자리까지 반올림 (예: 4.5시간)
-        return Math.round((minutes / 60.0) * 10.0) / 10.0;
+        return Math.round((Math.max(0, finalMinutes) / 60.0) * 10.0) / 10.0;
     }
 
-    // 3. 관리자 직접 수정용 메서드
+    // 3. 관리자 직접 수정용 메서드 (기존 유지)
     public void updateInfo(LocalDateTime start, LocalDateTime end, AttendanceStatus status) {
         this.checkInTime = start;
         this.checkOutTime = end;
         this.status = status;
     }
-    //정정 요청 시 퇴근 '시간'만 수정하는 메서드
+
+    // 정정 요청 시 퇴근 '시간'만 수정하는 메서드 (기존 유지)
     public void updateEndTime(java.time.LocalTime newTime) {
-        // 1. 날짜 결정 (기존 퇴근 날짜가 있으면 그거 쓰고, 없으면 출근 날짜 씀)
+        if (this.checkInTime == null) return; // 출근 기록이 없으면 수정 불가 처리
+
         java.time.LocalDate targetDate = (this.checkOutTime != null)
                 ? this.checkOutTime.toLocalDate()
                 : this.checkInTime.toLocalDate();
 
-        // 2. 날짜 + 새로운 시간 합쳐서 저장 (예: 2024-05-20 + 18:00)
         this.checkOutTime = java.time.LocalDateTime.of(targetDate, newTime);
     }
 }
