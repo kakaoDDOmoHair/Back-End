@@ -7,6 +7,7 @@ import com.paymate.paymate_server.domain.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -23,8 +24,11 @@ public class MemberController {
      * 회원가입 (POST /join)
      */
     @PostMapping("/join")
-    public ResponseEntity<Map<String, Object>> join(@RequestBody User user) {
-        Long userId = memberService.join(user);
+    public ResponseEntity<Map<String, Object>> join(@Valid @RequestBody JoinRequestDto dto) {
+        // 1. @Valid가 붙어있어서, birthDate가 6자리가 아니면 여기서 바로 에러가 터짐 (자동 방어)
+
+        // 2. DTO를 Entity로 바꿔서 서비스로 넘김
+        Long userId = memberService.join(dto.toEntity());
 
         Map<String, Object> response = new HashMap<>();
         response.put("userId", userId);

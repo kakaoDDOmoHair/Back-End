@@ -5,6 +5,7 @@ import com.paymate.paymate_server.domain.member.enums.UserStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import java.time.LocalDate; // [추가] 날짜 타입을 위해 필요
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,6 +35,12 @@ public class User {
     @Column(length = 20)
     private String phone;
 
+    // --- [추가된 필드 시작] ---
+    @Column(name = "birth_date", length = 6)
+    private String birthDate; // 생년월일 (예: "980101")
+
+    // --- [추가된 필드 끝] ---
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private UserRole role; // OWNER(사장), WORKER(알바)
@@ -57,9 +64,11 @@ public class User {
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+
     public void updatePassword(String encodedPassword) {
         this.password = encodedPassword;
     }
+
     public void updateStatus(UserStatus status) {
         this.status = status;
     }
