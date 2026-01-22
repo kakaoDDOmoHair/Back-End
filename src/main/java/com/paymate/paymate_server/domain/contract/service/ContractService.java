@@ -27,6 +27,7 @@ public class ContractService {
     private final ContractRepository contractRepository;
     private final MemberRepository memberRepository;
     private final StoreRepository storeRepository;
+    // NotificationRepository 제거됨 (알림 안 보낼 거니까 필요 없음)
 
     // 1. 계약서 생성
     public Long createContract(ContractRequest request) {
@@ -77,27 +78,16 @@ public class ContractService {
         return contracts.map(ContractResponse::new);
     }
 
-    // 4. 계약서 수정 (PATCH) - 로직 구현 완료
+    // 4. 계약서 수정 (PATCH)
     public void updateContract(Long contractId, ContractRequest request) {
         Contract contract = contractRepository.findById(contractId)
                 .orElseThrow(() -> new IllegalArgumentException("해당 계약서가 없습니다."));
 
-        // Dirty Checking: 값이 있으면 변경 (Setter 필요)
-        if (request.getWage() != null) {
-            contract.setWage(request.getWage());
-        }
-        if (request.getWorkHours() != null) {
-            contract.setWorkHours(request.getWorkHours());
-        }
-        if (request.getWorkStartDate() != null) {
-            contract.setWorkStartDate(request.getWorkStartDate());
-        }
-        if (request.getWorkEndDate() != null) {
-            contract.setWorkEndDate(request.getWorkEndDate());
-        }
-        if (request.getStatus() != null) {
-            contract.setStatus(request.getStatus());
-        }
+        if (request.getWage() != null) contract.setWage(request.getWage());
+        if (request.getWorkHours() != null) contract.setWorkHours(request.getWorkHours());
+        if (request.getWorkStartDate() != null) contract.setWorkStartDate(request.getWorkStartDate());
+        if (request.getWorkEndDate() != null) contract.setWorkEndDate(request.getWorkEndDate());
+        if (request.getStatus() != null) contract.setStatus(request.getStatus());
     }
 
     // 5. OCR 스캔 Mock

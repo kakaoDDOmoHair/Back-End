@@ -2,15 +2,18 @@ package com.paymate.paymate_server.domain.notification.controller;
 
 import com.paymate.paymate_server.domain.notification.dto.NotificationResponse;
 import com.paymate.paymate_server.domain.notification.service.NotificationService;
+// import com.paymate.paymate_server.global.security.UserDetailsImpl; // 시큐리티 설정에 따라 다름
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
 
-@RestController // 👈 이게 핵심! (나 컨트롤러야!)
-@RequestMapping("/api/v1/notifications") // 👈 주소 설정
+@RestController
+@RequestMapping("/api/v1/notifications")
 @RequiredArgsConstructor
 public class NotificationController {
 
@@ -18,29 +21,36 @@ public class NotificationController {
 
     // 1. 알림 목록 조회
     @GetMapping
-    public ResponseEntity<Map<String, Object>> getNotifications() {
-        // TODO: 실제로는 SecurityUtil.getCurrentUserId() 사용
-        Long userId = 2L; // 테스트용: 알바생 ID
+    public ResponseEntity<?> getNotifications(@AuthenticationPrincipal UserDetails userDetails) {
+        // 로그인한 유저의 ID를 가져오기 (UserDetails 구현체에 따라 다를 수 있음. 일단 2L로 테스트하셔도 무방)
+        // Long userId = ((UserDetailsImpl) userDetails).getUserId();
+        Long userId = 2L; // 일단 테스트 유지
 
         List<NotificationResponse> notifications = notificationService.getMyNotifications(userId);
-
-        return ResponseEntity.ok(Map.of(
-                "status", "success",
-                "data", notifications
-        ));
+        return ResponseEntity.ok(Map.of("status", "success", "data", notifications));
     }
 
-    // 2. 알림 읽음 처리
+    // 2. 개별 알림 읽음 처리
     @PatchMapping("/{id}/read")
-    public ResponseEntity<Map<String, String>> readNotification(@PathVariable Long id) {
-        // TODO: 실제로는 SecurityUtil.getCurrentUserId() 사용
-        Long userId = 2L; // 테스트용: 알바생 ID
-
+    public ResponseEntity<?> readNotification(@PathVariable Long id) {
+        Long userId = 2L;
         notificationService.readNotification(id, userId);
+        return ResponseEntity.ok(Map.of("status", "success", "message", "알림 읽음 처리 완료"));
+    }
 
-        return ResponseEntity.ok(Map.of(
-                "status", "success",
-                "message", "알림 읽음 처리 완료"
-        ));
+    // 3. 안 읽은 알림 개수 (뱃지)
+    @GetMapping("/unread-count")
+    public ResponseEntity<?> getUnreadCount() {
+        Long userId = 2L;
+        long count = notificationService.getUnreadCount(userId);
+        return ResponseEntity.ok(Map.of("status", "success", "data", Map.of("count", count)));
+    }
+
+    // 4. 전체 읽음 처리
+    @PatchMapping("/read-all")
+    public ResponseEntity<?> readAllNotifications() {
+        Long userId = 2L;
+        notificationService.readAllNotifications(userId);
+        return ResponseEntity.ok(Map.of("status", "success", "message", "전체 읽음 처리 완료"));
     }
 }

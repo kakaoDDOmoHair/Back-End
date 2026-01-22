@@ -6,6 +6,8 @@ import com.paymate.paymate_server.domain.attendance.enums.AttendanceStatus;
 import com.paymate.paymate_server.domain.attendance.repository.AttendanceRepository;
 import com.paymate.paymate_server.domain.member.entity.User;
 import com.paymate.paymate_server.domain.member.repository.MemberRepository;
+import com.paymate.paymate_server.domain.notification.enums.NotificationType;
+import com.paymate.paymate_server.domain.notification.service.NotificationService;
 import com.paymate.paymate_server.domain.schedule.entity.Schedule;
 import com.paymate.paymate_server.domain.schedule.repository.ScheduleRepository;
 import com.paymate.paymate_server.domain.store.entity.Store;
@@ -17,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,9 +36,10 @@ public class AttendanceService {
     private final StoreRepository storeRepository;
     private final ScheduleRepository scheduleRepository;
 
-    /**
-     * 1. 출근 (Clock-In)
-     */
+    // [추가] 알림 서비스 주입
+    private final NotificationService notificationService;
+
+    // 1. 출근 (Clock-In)
     public AttendanceDto.ClockInResponse clockIn(AttendanceDto.ClockInRequest request) {
         User user = memberRepository.findById(request.getUserId())
                 .orElseThrow(() -> new IllegalArgumentException("사용자 없음"));
@@ -49,15 +53,20 @@ public class AttendanceService {
         LocalDateTime now = LocalDateTime.now();
         AttendanceStatus status = AttendanceStatus.ON;
 
-        // 지각 체크
+        // 지각 체크 로직
         Optional<Schedule> scheduleOpt = scheduleRepository.findByUserAndStoreAndWorkDate(
                 user, store, now.toLocalDate()
         );
 
+        boolean isLate = false;
         if (scheduleOpt.isPresent()) {
             Schedule schedule = scheduleOpt.get();
-            if (now.toLocalTime().isAfter(schedule.getStartTime())) {
+            LocalTime scheduledStart = schedule.getStartTime();
+            LocalTime actualStart = now.toLocalTime();
+
+            if (actualStart.isAfter(scheduledStart)) {
                 status = AttendanceStatus.LATE;
+                isLate = true;
             }
         }
 
@@ -74,6 +83,26 @@ public class AttendanceService {
 
         attendanceRepository.save(attendance);
 
+        // ▼▼▼ [추가] 알바생에게 알림 발송 ▼▼▼
+        notificationService.send(
+                user,
+                NotificationType.ATTENDANCE,
+                "출근",
+                "(" + now.format(DateTimeFormatter.ofPattern("HH:mm")) + ") 출근 체크 완료! 오늘도 화이팅하세요!"
+        );
+
+        // ▼▼▼ [추가] 사장님에게 알림 발송 ▼▼▼
+        String ownerMsg = isLate ?
+                user.getName() + "님이 지각했습니다. (" + now.format(DateTimeFormatter.ofPattern("HH:mm")) + ")" :
+                user.getName() + "님이 출근했습니다. (" + now.format(DateTimeFormatter.ofPattern("HH:mm")) + ")";
+
+        notificationService.send(
+                store.getOwner(),
+                NotificationType.ATTENDANCE,
+                isLate ? "지각 알림" : "출근 알림",
+                ownerMsg
+        );
+
         return AttendanceDto.ClockInResponse.builder()
                 .success(true)
                 .attendanceId(attendance.getId())
@@ -82,26 +111,40 @@ public class AttendanceService {
                 .build();
     }
 
-    /**
-     * 2. 퇴근 (Clock-Out)
-     */
+    // 2. 퇴근 (Clock-Out)
     public AttendanceDto.ClockOutResponse clockOut(AttendanceDto.ClockOutRequest request) {
         Attendance attendance = attendanceRepository.findById(request.getAttendanceId())
                 .orElseThrow(() -> new IllegalArgumentException("기록이 존재하지 않습니다."));
 
-        attendance.clockOut(LocalDateTime.now(), request.getLat(), request.getLon());
+        LocalDateTime now = LocalDateTime.now();
+        attendance.clockOut(now, request.getLat(), request.getLon());
+
+        double totalHours = attendance.calculateTotalHours();
+
+        // ▼▼▼ [추가] 퇴근 알림 발송 ▼▼▼
+        notificationService.send(
+                attendance.getUser(),
+                NotificationType.ATTENDANCE,
+                "퇴근",
+                "퇴근 처리가 완료되었습니다. 고생하셨습니다! (근무시간: " + String.format("%.1f", totalHours) + "시간)"
+        );
+
+        notificationService.send(
+                attendance.getStore().getOwner(),
+                NotificationType.ATTENDANCE,
+                "퇴근 알림",
+                attendance.getUser().getName() + "님이 퇴근했습니다."
+        );
 
         return AttendanceDto.ClockOutResponse.builder()
                 .success(true)
-                .message("수고하셨습니다!")
+                .message("수고하셨습니다! 퇴근 처리됨.")
                 .clockOutTime(attendance.getCheckOutTime())
-                .totalHours(attendance.calculateTotalHours()) // 자동 휴게시간 차감 로직 적용됨
+                .totalHours(totalHours)
                 .build();
     }
 
-    /**
-     * 3. 월간 조회 (알바생용)
-     */
+    // 3. 월간 조회 (기존 Develop 코드 유지)
     @Transactional(readOnly = true)
     public List<AttendanceDto.AttendanceLog> getMonthlyLog(Long userId, int year, int month) {
         User user = memberRepository.findById(userId)
@@ -114,7 +157,7 @@ public class AttendanceService {
 
         return list.stream().map(a -> AttendanceDto.AttendanceLog.builder()
                 .attendanceId(a.getId())
-                .workDate(a.getWorkDate())
+                .workDate(a.getCheckInTime().toLocalDate().toString())
                 .storeName(a.getStore().getName())
                 .startTime(a.getCheckInTime())
                 .endTime(a.getCheckOutTime())
@@ -122,97 +165,81 @@ public class AttendanceService {
                 .build()).collect(Collectors.toList());
     }
 
-    /**
-     * 4. 관리자 직접 수정 (Manager Modify)
-     */
+    // 4. 관리자 수정 (기존 Develop 코드 유지)
     public void modifyAttendance(Long attendanceId, AttendanceDto.ModifyRequest request) {
         Attendance attendance = attendanceRepository.findById(attendanceId)
                 .orElseThrow(() -> new IllegalArgumentException("기록 없음"));
 
         LocalDate date = LocalDate.parse(request.getWorkDate());
-        LocalDateTime startDateTime = LocalDateTime.of(date, LocalTime.parse(request.getStartTime()));
-        LocalDateTime endDateTime = LocalDateTime.of(date, LocalTime.parse(request.getEndTime()));
+        LocalTime start = LocalTime.parse(request.getStartTime());
+        LocalTime end = LocalTime.parse(request.getEndTime());
+
+        LocalDateTime startDateTime = LocalDateTime.of(date, start);
+        LocalDateTime endDateTime = LocalDateTime.of(date, end);
 
         AttendanceStatus status = request.getStatus().equals("NORMAL") ? AttendanceStatus.OFF : AttendanceStatus.valueOf(request.getStatus());
 
         attendance.updateInfo(startDateTime, endDateTime, status);
     }
 
-    /**
-     * 5. 실시간 근무 현황 조회 (Today) - 사장님용
-     */
+    // 5. 실시간 근무 현황 (기존 Develop 코드 유지)
     @Transactional(readOnly = true)
     public AttendanceDto.TodayResponse getTodayStatus(Long storeId) {
         Store store = storeRepository.findById(storeId)
                 .orElseThrow(() -> new IllegalArgumentException("매장 없음"));
-
         String today = LocalDate.now().toString();
         List<Attendance> list = attendanceRepository.findAllByStoreAndWorkDate(store, today);
 
         double totalTime = 0.0;
         long totalWage = 0;
 
-        List<AttendanceDto.AttendanceLog> logs = list.stream().map(a ->
-                AttendanceDto.AttendanceLog.builder()
-                        .attendanceId(a.getId())
-                        .workDate(a.getWorkDate())
-                        .storeName(a.getStore().getName())
-                        .startTime(a.getCheckInTime())
-                        .endTime(a.getCheckOutTime())
-                        .status(a.getStatus().toString())
-                        .build()
-        ).collect(Collectors.toList());
+        List<AttendanceDto.AttendanceLog> logs = list.stream().map(a -> {
+            return AttendanceDto.AttendanceLog.builder()
+                    .attendanceId(a.getId())
+                    .workDate(a.getWorkDate())
+                    .storeName(a.getStore().getName())
+                    .startTime(a.getCheckInTime())
+                    .endTime(a.getCheckOutTime())
+                    .status(a.getStatus().toString())
+                    .build();
+        }).collect(Collectors.toList());
 
         for (Attendance a : list) {
             double hours = a.calculateTotalHours();
             totalTime += hours;
-
-            // 유저별 실제 설정된 시급 적용
-            int hourlyWage = (a.getUser().getHourlyWage() != null && a.getUser().getHourlyWage() > 0)
-                    ? a.getUser().getHourlyWage() : 9860;
-
-            totalWage += (long) (hours * hourlyWage);
+            totalWage += (long) (hours * 9860);
         }
 
         Map<String, Double> summary = new HashMap<>();
-        summary.put(today, Math.round(totalTime * 10.0) / 10.0);
+        summary.put(today, totalTime);
 
         return AttendanceDto.TodayResponse.builder()
-                .totalTime(Math.round(totalTime * 10.0) / 10.0)
+                .totalTime(totalTime)
                 .totalWage(totalWage)
                 .summary(summary)
                 .list(logs)
                 .build();
     }
 
-    /**
-     * 6. 일별 근무 기록 조회 (Daily)
-     */
+    // 6. 일별 조회 (기존 Develop 코드 유지)
     @Transactional(readOnly = true)
     public List<AttendanceDto.DailyLog> getDailyLog(Long storeId, String date) {
         Store store = storeRepository.findById(storeId).orElseThrow();
         List<Attendance> list = attendanceRepository.findAllByStoreAndWorkDate(store, date);
 
-        return list.stream().map(a -> {
-            int hourlyWage = (a.getUser().getHourlyWage() != null && a.getUser().getHourlyWage() > 0)
-                    ? a.getUser().getHourlyWage() : 9860;
-
-            return AttendanceDto.DailyLog.builder()
-                    .name(a.getUser().getName())
-                    .startTime(a.getCheckInTime() != null ? a.getCheckInTime().toLocalTime().toString() : "-")
-                    .endTime(a.getCheckOutTime() != null ? a.getCheckOutTime().toLocalTime().toString() : "-")
-                    .wage((long) (a.calculateTotalHours() * hourlyWage))
-                    .build();
-        }).collect(Collectors.toList());
+        return list.stream().map(a -> AttendanceDto.DailyLog.builder()
+                .name(a.getUser().getName())
+                .startTime(a.getCheckInTime() != null ? a.getCheckInTime().toLocalTime().toString() : "-")
+                .endTime(a.getCheckOutTime() != null ? a.getCheckOutTime().toLocalTime().toString() : "-")
+                .wage((long) (a.calculateTotalHours() * 9860))
+                .build()).collect(Collectors.toList());
     }
 
-    /**
-     * 7. 근무 기록 직접 등록 (Manual Register)
-     */
+    // 7. 수동 등록 (기존 Develop 코드 유지)
     public Long manualRegister(AttendanceDto.ManualRegisterRequest request) {
         Store store = storeRepository.findById(request.getStoreId()).orElseThrow();
         User user = memberRepository.findById(request.getUserId())
-                .orElseThrow(() -> new IllegalArgumentException("해당 유저가 없습니다."));
+                .orElseThrow(() -> new IllegalArgumentException("해당 유저(ID:" + request.getUserId() + ")가 없습니다."));
 
         LocalDate date = LocalDate.parse(request.getWorkDate());
         LocalDateTime start = LocalDateTime.of(date, LocalTime.parse(request.getStartTime()));
@@ -224,25 +251,23 @@ public class AttendanceService {
                 .workDate(request.getWorkDate())
                 .checkInTime(start)
                 .checkOutTime(end)
-                .status(AttendanceStatus.PENDING) // 관리자 승인 전 대기 상태
+                .status(AttendanceStatus.PENDING)
                 .build();
 
         return attendanceRepository.save(attendance).getId();
     }
 
-    /**
-     * 8. 근무 시간 수정 (퇴근 시간 정정)
-     */
+    // 8. 정정 요청 처리 (기존 Develop 코드 유지)
     @Transactional
     public void updateAttendance(Long attendanceId, String newValue) {
         Attendance attendance = attendanceRepository.findById(attendanceId)
-                .orElseThrow(() -> new IllegalArgumentException("기록 없음"));
+                .orElseThrow(() -> new IllegalArgumentException("해당 근무 기록이 없습니다. ID=" + attendanceId));
 
         try {
             LocalTime time = LocalTime.parse(newValue);
             attendance.updateEndTime(time);
         } catch (Exception e) {
-            throw new IllegalArgumentException("시간 형식이 올바르지 않습니다. (예: 09:00)");
+            throw new IllegalArgumentException("시간 형식이 올바르지 않습니다. (예: 09:00) 입력값: " + newValue);
         }
     }
 }

@@ -1,19 +1,16 @@
 package com.paymate.paymate_server.domain.salary.service;
 
-import org.xhtmlrenderer.pdf.ITextRenderer;
 import com.lowagie.text.pdf.BaseFont;
-
-// [추가] 계약서 및 Optional 임포트
-import com.paymate.paymate_server.domain.contract.entity.Contract;
-import com.paymate.paymate_server.domain.contract.repository.ContractRepository;
-import java.util.Optional;
-
 import com.paymate.paymate_server.domain.attendance.entity.Attendance;
 import com.paymate.paymate_server.domain.attendance.repository.AttendanceRepository;
+import com.paymate.paymate_server.domain.contract.entity.Contract;
+import com.paymate.paymate_server.domain.contract.repository.ContractRepository;
 import com.paymate.paymate_server.domain.member.entity.Account;
 import com.paymate.paymate_server.domain.member.entity.User;
 import com.paymate.paymate_server.domain.member.repository.AccountRepository;
 import com.paymate.paymate_server.domain.member.repository.MemberRepository;
+import com.paymate.paymate_server.domain.notification.enums.NotificationType;
+import com.paymate.paymate_server.domain.notification.service.NotificationService;
 import com.paymate.paymate_server.domain.salary.dto.SalaryDto;
 import com.paymate.paymate_server.domain.salary.entity.SalaryPayment;
 import com.paymate.paymate_server.domain.salary.enums.PaymentStatus;
@@ -24,7 +21,9 @@ import com.paymate.paymate_server.global.util.AesUtil;
 import jakarta.mail.internet.MimeMessage;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -35,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.util.UriUtils;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
+import org.xhtmlrenderer.pdf.ITextRenderer;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -44,6 +44,7 @@ import java.time.LocalDate;
 import java.time.temporal.IsoFields;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -58,15 +59,13 @@ public class SalaryService {
     private final AesUtil aesUtil;
     private final AccountRepository accountRepository;
 
-    // [추가] 계약서 정보를 가져오기 위해 주입
+    // [추가] 고급 기능(PDF, 메일, 알림)을 위한 의존성
     private final ContractRepository contractRepository;
-
     private final JavaMailSender mailSender;
     private final TemplateEngine templateEngine;
+    private final NotificationService notificationService;
 
-    /**
-     * 주휴수당 계산 로직
-     */
+    // [추가] 주휴수당 계산 로직
     private long calculateWeeklyHolidayAllowance(List<Attendance> attendances, int hourlyWage) {
         Map<Integer, Double> weeklyHours = attendances.stream()
                 .collect(Collectors.groupingBy(
@@ -84,20 +83,24 @@ public class SalaryService {
         return totalAllowance;
     }
 
-    /**
-     * 사장님용: 정산 실행
-     */
     public void processPayment(Long paymentId) {
         SalaryPayment payment = salaryPaymentRepository.findById(paymentId)
                 .orElseThrow(() -> new IllegalArgumentException("해당 정산 건을 찾을 수 없습니다."));
 
-        payment.completePayment();
+        payment.completePayment(); // 상태 변경
+
+        // [업그레이드] 실제 이메일 발송
         sendPayslipEmail(payment.getId());
+
+        // [추가] 알림 발송
+        notificationService.send(
+                payment.getUser(),
+                NotificationType.PAYMENT,
+                "급여 정산 완료",
+                String.format("%s 매장의 급여 정산이 완료되었습니다.", payment.getStore().getName())
+        );
     }
 
-    /**
-     * 계좌 정보 조회
-     */
     @Transactional(readOnly = true)
     public SalaryDto.AccountResponse getAccountInfo(Long paymentId) {
         SalaryPayment payment = salaryPaymentRepository.findById(paymentId)
@@ -113,25 +116,36 @@ public class SalaryService {
         return SalaryDto.AccountResponse.builder().bank(account.getBankName()).account(decryptedAccount).holder(payment.getUser().getName()).build();
     }
 
-    /**
-     * 정산 확정
-     */
     @Transactional
     public String completePayment(Long paymentId, Long accountId) {
-        SalaryPayment payment = salaryPaymentRepository.findById(paymentId).orElseThrow(() -> new IllegalArgumentException("정산 내역 없음"));
-        if (payment.getStatus() == PaymentStatus.COMPLETED) throw new IllegalStateException("이미 정산 완료된 내역입니다.");
+        SalaryPayment payment = salaryPaymentRepository.findById(paymentId)
+                .orElseThrow(() -> new IllegalArgumentException("정산 내역 없음"));
+        if (payment.getStatus() == PaymentStatus.COMPLETED) {
+            throw new IllegalStateException("이미 정산 완료된 내역입니다.");
+        }
         User worker = payment.getUser();
-        Account targetAccount = accountRepository.findById(accountId).orElseThrow(() -> new IllegalArgumentException("계좌 정보 없음"));
-        if (!targetAccount.getUser().getId().equals(worker.getId())) throw new IllegalArgumentException("이 계좌는 해당 알바생의 계좌가 아닙니다.");
+        Account targetAccount = accountRepository.findById(accountId)
+                .orElseThrow(() -> new IllegalArgumentException("계좌 정보 없음"));
+        if (!targetAccount.getUser().getId().equals(worker.getId())) {
+            throw new IllegalArgumentException("이 계좌는 해당 알바생의 계좌가 아닙니다.");
+        }
+
         long amount = payment.getTotalAmount();
         targetAccount.deposit(amount);
         payment.completePayment();
-        return String.format("[기존내역 확정] %s님께 %d원 입금 완료! (잔액: %d원)", worker.getName(), amount, targetAccount.getBalance());
+
+        // [추가] 알림 발송
+        notificationService.send(
+                worker,
+                NotificationType.PAYMENT,
+                "급여 입금 완료 💰",
+                String.format("급여 %d원이 입금되었습니다.", amount)
+        );
+
+        return String.format("[기존내역 확정] %s님께 %d원 입금 완료!", worker.getName(), amount);
     }
 
-    /**
-     * 예상 급여 조회
-     */
+    // [수정] 주휴수당 및 세금 포함 계산으로 업그레이드
     @Transactional(readOnly = true)
     public SalaryDto.EstimatedResponse getEstimatedSalary(Long storeId, Long userId, int year, int month) {
         User user = memberRepository.findById(userId).orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
@@ -142,6 +156,8 @@ public class SalaryService {
         List<Attendance> attendances = attendanceRepository.findAllByUserAndCheckInTimeBetween(user, start.atStartOfDay(), end.atTime(23, 59, 59));
 
         double totalHours = attendances.stream().mapToDouble(Attendance::calculateTotalHours).sum();
+
+        // 상세 계산 적용
         long baseAmount = Math.round(totalHours * hourlyWage);
         long weeklyAllowance = calculateWeeklyHolidayAllowance(attendances, hourlyWage);
         long rawAmount = baseAmount + weeklyAllowance;
@@ -152,11 +168,16 @@ public class SalaryService {
                 .period(start.toString() + " ~ " + LocalDate.now().toString())
                 .amount(finalAmount)
                 .totalHours(totalHours)
+                // 추가 필드 채우기
+                .baseSalary(baseAmount)
+                .weeklyAllowance(weeklyAllowance)
+                .tax(tax)
                 .build();
     }
 
     public void requestPayment(Long paymentId) {
-        SalaryPayment payment = salaryPaymentRepository.findById(paymentId).orElseThrow(() -> new IllegalArgumentException("정산 내역 없음"));
+        SalaryPayment payment = salaryPaymentRepository.findById(paymentId)
+                .orElseThrow(() -> new IllegalArgumentException("정산 내역 없음"));
         payment.requestSalary();
     }
 
@@ -179,11 +200,7 @@ public class SalaryService {
                 .id(p.getId()).month(p.getPeriodStart().getMonthValue() + "월").amount(p.getTotalAmount()).status(p.getStatus().toString()).build()).collect(Collectors.toList());
     }
 
-    // --- [핵심 수정 구간 시작] ---
-
-    /**
-     * [완전 교체] 명세서 이메일 발송 (Flying Saucer 방식 + 계약서 입사일 적용)
-     */
+    // [업그레이드] 실제 PDF 생성 및 이메일 전송 로직 적용
     @Async
     public void sendPayslipEmail(Long paymentId) {
         SalaryPayment payment = salaryPaymentRepository.findById(paymentId)
@@ -191,29 +208,16 @@ public class SalaryService {
 
         try {
             SalaryDto.EstimatedResponse detail = getPayslipPreview(paymentId);
-
-            // 데이터 세팅
             Context context = new Context();
 
-            // [1. 입사일 결정 로직]
-            LocalDate joinDate = payment.getUser().getCreatedAt().toLocalDate(); // 기본값: 앱 가입일
-            // 계약서가 존재하면, 계약서의 근무 시작일을 입사일로 사용
+            LocalDate joinDate = payment.getUser().getCreatedAt().toLocalDate();
             Optional<Contract> contract = contractRepository.findTopByUserAndStoreOrderByWorkStartDateAsc(
                     payment.getUser(), payment.getStore());
-
             if (contract.isPresent()) {
                 joinDate = contract.get().getWorkStartDate();
             }
             context.setVariable("joinDate", joinDate);
-
-            // [2. 생년월일 처리]
-            if (payment.getUser().getBirthDate() != null) {
-                context.setVariable("birthDate", payment.getUser().getBirthDate());
-            } else {
-                context.setVariable("birthDate", "-");
-            }
-
-            // [3. 나머지 데이터]
+            context.setVariable("birthDate", payment.getUser().getBirthDate() != null ? payment.getUser().getBirthDate() : "-");
             context.setVariable("workerName", payment.getUser().getName());
             context.setVariable("storeName", payment.getStore().getName());
             context.setVariable("year", payment.getPeriodStart().getYear());
@@ -225,53 +229,34 @@ public class SalaryService {
             context.setVariable("totalHours", detail.getTotalHours());
             context.setVariable("hourlyWage", (payment.getUser().getHourlyWage() != null) ? payment.getUser().getHourlyWage() : 9860);
 
-            // 1. HTML 렌더링
             String html = templateEngine.process("payslip-template", context);
 
-            // 2. PDF 생성 (Flying Saucer)
             byte[] pdfBytes;
             try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
                 ITextRenderer renderer = new ITextRenderer();
-
-                // [중요] 한글 폰트 설정 (Windows 맑은고딕)
                 String fontPath = "C:/Windows/Fonts/malgun.ttf";
                 File fontFile = new File(fontPath);
-
                 if (fontFile.exists()) {
-                    renderer.getFontResolver().addFont(
-                            fontPath,
-                            BaseFont.IDENTITY_H,
-                            BaseFont.EMBEDDED
-                    );
-                } else {
-                    System.err.println("⚠️ 폰트 파일을 찾을 수 없습니다: " + fontPath);
+                    renderer.getFontResolver().addFont(fontPath, BaseFont.IDENTITY_H, BaseFont.EMBEDDED);
                 }
-
                 renderer.setDocumentFromString(html);
                 renderer.layout();
                 renderer.createPDF(baos);
-
                 pdfBytes = baos.toByteArray();
             }
 
-            // 3. 메일 발송
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-
             helper.setTo(payment.getUser().getEmail());
             helper.setSubject("[PayMate] " + payment.getPeriodStart().getMonthValue() + "월 임금명세서");
             helper.setText("안녕하세요. " + payment.getStore().getName() + "입니다. 요청하신 임금명세서를 보내드립니다.", false);
             helper.addAttachment("임금명세서_" + payment.getUser().getName() + ".pdf", new ByteArrayResource(pdfBytes));
-
             mailSender.send(message);
-            System.out.println("✅ 명세서 발송 성공: " + payment.getUser().getEmail());
 
         } catch (Exception e) {
-            System.err.println("❌ 명세서 발송 중 에러 발생: " + e.getMessage());
             e.printStackTrace();
         }
     }
-    // --- [핵심 수정 구간 끝] ---
 
     public void generateSalaryExcel(Long storeId, int year, int month, HttpServletResponse response) throws IOException {
         List<SalaryPayment> payments = salaryPaymentRepository.findAllByStoreIdAndYearAndMonth(storeId, year, month);
@@ -301,19 +286,34 @@ public class SalaryService {
         User worker = memberRepository.findById(userId).orElseThrow(() -> new IllegalArgumentException("알바생 정보를 찾을 수 없습니다."));
         Store store = storeRepository.findById(storeId).orElseThrow(() -> new IllegalArgumentException("매장 정보를 찾을 수 없습니다."));
         Account targetAccount = accountRepository.findById(accountId).orElseThrow(() -> new IllegalArgumentException("계좌 정보를 찾을 수 없습니다."));
+
         SalaryDto.EstimatedResponse estimate = getEstimatedSalary(storeId, userId, year, month);
+
         SalaryPayment newPayment = SalaryPayment.builder()
-                .user(worker).store(store).account(targetAccount).totalAmount(estimate.getAmount()).totalHours(estimate.getTotalHours())
-                .periodStart(LocalDate.of(year, month, 1)).periodEnd(LocalDate.of(year, month, 1).withDayOfMonth(LocalDate.of(year, month, 1).lengthOfMonth()))
+                .user(worker).store(store).account(targetAccount)
+                .totalAmount(estimate.getAmount()).totalHours(estimate.getTotalHours())
+                .periodStart(LocalDate.of(year, month, 1))
+                .periodEnd(LocalDate.of(year, month, 1).withDayOfMonth(LocalDate.of(year, month, 1).lengthOfMonth()))
                 .status(PaymentStatus.WAITING).build();
+
         targetAccount.deposit(estimate.getAmount());
         newPayment.completePayment();
         salaryPaymentRepository.save(newPayment);
+
+        // [추가] 알림 발송
+        notificationService.send(
+                worker,
+                NotificationType.PAYMENT,
+                "급여 입금 완료 💰",
+                String.format("%d월 급여 %d원이 입금되었습니다.", month, estimate.getAmount())
+        );
+
         String displayAccount;
         try { displayAccount = aesUtil.decrypt(targetAccount.getAccountNumber()); } catch (Exception e) { displayAccount = targetAccount.getAccountNumber(); }
         return String.format("[%s] %s님께 %d원 정산 완료! (계좌: %s, 잔액: %d원)", store.getName(), worker.getName(), estimate.getAmount(), displayAccount, targetAccount.getBalance());
     }
 
+    // [추가] 명세서 데이터 미리보기 메서드
     @Transactional(readOnly = true)
     public SalaryDto.EstimatedResponse getPayslipPreview(Long paymentId) {
         SalaryPayment payment = salaryPaymentRepository.findById(paymentId)
@@ -336,35 +336,21 @@ public class SalaryService {
                 .build();
     }
 
-    /**
-     * [수정] HTML 미리보기 (계약서 입사일 및 생년월일 추가)
-     */
+    // [추가] HTML 미리보기 메서드
     @Transactional(readOnly = true)
     public String getPayslipHtmlPreview(Long paymentId) {
         SalaryPayment payment = salaryPaymentRepository.findById(paymentId)
                 .orElseThrow(() -> new IllegalArgumentException("정산 내역 없음"));
 
         SalaryDto.EstimatedResponse detail = getPayslipPreview(paymentId);
-
         Context context = new Context();
 
-        // [1. 입사일 결정 로직]
-        LocalDate joinDate = payment.getUser().getCreatedAt().toLocalDate(); // 기본값
-        Optional<Contract> contract = contractRepository.findTopByUserAndStoreOrderByWorkStartDateAsc(
-                payment.getUser(), payment.getStore());
+        LocalDate joinDate = payment.getUser().getCreatedAt().toLocalDate();
+        Optional<Contract> contract = contractRepository.findTopByUserAndStoreOrderByWorkStartDateAsc(payment.getUser(), payment.getStore());
+        if (contract.isPresent()) joinDate = contract.get().getWorkStartDate();
 
-        if (contract.isPresent()) {
-            joinDate = contract.get().getWorkStartDate();
-        }
         context.setVariable("joinDate", joinDate);
-
-        // [2. 생년월일 처리]
-        if (payment.getUser().getBirthDate() != null) {
-            context.setVariable("birthDate", payment.getUser().getBirthDate());
-        } else {
-            context.setVariable("birthDate", "-");
-        }
-
+        context.setVariable("birthDate", payment.getUser().getBirthDate() != null ? payment.getUser().getBirthDate() : "-");
         context.setVariable("workerName", payment.getUser().getName());
         context.setVariable("storeName", payment.getStore().getName());
         context.setVariable("year", payment.getPeriodStart().getYear());
