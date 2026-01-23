@@ -291,7 +291,7 @@ public class AuthService {
         user.updatePassword(passwordEncoder.encode(newPassword));
 
         // [중요] 비밀번호 변경 시 모든 세션 로그아웃
-        // RefreshToken 테이블에서 이 유저(Username 키)의 토큰을 지워야 함
+        // RefreshToken 테이블에서 이 유저(Username 키)의 토큰을 지워야 함s
         refreshTokenRepository.findByEmail(user.getUsername()) // 키값은 Username임
                 .ifPresent(refreshTokenRepository::delete);
     }
