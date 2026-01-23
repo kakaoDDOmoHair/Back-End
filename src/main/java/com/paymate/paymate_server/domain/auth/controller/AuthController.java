@@ -4,6 +4,7 @@ import com.paymate.paymate_server.domain.auth.dto.*;
 import com.paymate.paymate_server.domain.auth.service.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -41,14 +42,25 @@ public class AuthController {
 
     // 4. 비밀번호 검증 (회원탈퇴 전 본인확인용)
     @PostMapping("/password/verify")
-    public ResponseEntity<Map<String, Boolean>> verifyPassword(@RequestBody Map<String, String> request) {
-        // Request Body: { "email": "...", "password": "..." }
-        boolean isValid = authService.verifyPassword(request.get("email"), new PasswordVerifyRequestDto() {
-            public String getPassword() { return request.get("password"); }
-        });
+    public ResponseEntity<Map<String, Object>> verifyPassword(@RequestBody PasswordVerifyRequestDto request) {
 
-        Map<String, Boolean> response = new HashMap<>();
-        response.put("isValid", isValid);
+        // [수정 완료] 토큰에서 로그인한 사람의 ID를 직접 꺼내옵니다.
+        String currentUsername = SecurityContextHolder.getContext().getAuthentication().getName();
+
+        // 서비스 호출
+        boolean isValid = authService.verifyPassword(currentUsername, request);
+
+        Map<String, Object> response = new HashMap<>();
+        if (isValid) {
+            response.put("success", true);
+            response.put("code", 200);
+            response.put("message", "비밀번호가 확인되었습니다.");
+        } else {
+            response.put("success", false);
+            response.put("code", 400);
+            response.put("message", "비밀번호가 일치하지 않습니다.");
+        }
+
         return ResponseEntity.ok(response);
     }
 
