@@ -23,7 +23,10 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Random;
 import java.util.UUID;
-
+import org.springframework.mail.javamail.JavaMailSender; // 👈 추가
+import org.springframework.mail.javamail.MimeMessageHelper; // 👈 추가
+import jakarta.mail.MessagingException; // 👈 추가
+import jakarta.mail.internet.MimeMessage; // 👈 추가
 @Service
 @Transactional(readOnly = true)
 @RequiredArgsConstructor
@@ -34,6 +37,7 @@ public class AuthService {
     private final VerificationCodeRepository verificationCodeRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+    private final JavaMailSender mailSender;
 
     /**
      * [수정] 로그인 (Email -> Username)
@@ -143,9 +147,6 @@ public class AuthService {
                 .build();
     }
 
-    /**
-     * [유지] ID 찾기 - 인증번호 발송 (이메일로 찾는 것이므로 Email 유지)
-     */
     @Transactional
     public void sendVerificationCode(String email, String name) {
         User user = memberRepository.findByEmail(email)
@@ -163,27 +164,43 @@ public class AuthService {
                 .expiryDate(LocalDateTime.now().plusMinutes(3))
                 .build());
 
-        System.out.println("=========================================");
-        System.out.println("[PayMate 이메일 발송 Mock]");
-        System.out.println("수신자: " + email);
-        System.out.println("인증번호: " + code);
-        System.out.println("=========================================");
+        // 👇 [수정] Mock 로그 대신 실제 메일 전송 로직 호출
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+            helper.setTo(email);
+            helper.setSubject("[PayMate] 본인확인 인증번호입니다.");
+
+            // HTML 형식으로 가독성 있게 구성
+            String content = "<div style='margin:20px; padding:20px; border:1px solid #ddd;'>" +
+                    "<h3>안녕하세요, PayMate입니다.</h3>" +
+                    "<p>본인 확인을 위한 인증번호는 다음과 같습니다.</p>" +
+                    "<h2 style='color: #4A90E2;'>" + code + "</h2>" +
+                    "<p>3분 이내에 입력해 주세요.</p>" +
+                    "</div>";
+
+            helper.setText(content, true);
+            mailSender.send(message);
+
+        } catch (MessagingException e) {
+            throw new RuntimeException("메일 발송에 실패했습니다. 관리자에게 문의하세요.");
+        }
     }
 
-    /**
-     * [유지] ID 찾기 - 인증번호 검증 및 ID 반환
-     */
     @Transactional
     public String verifyCodeAndGetId(String email, String code) {
-        VerificationCode savedInfo = verificationCodeRepository.findById(email)
+        // 👈 들어오는 값의 공백을 제거합니다.
+        String trimmedEmail = email.trim();
+        String trimmedCode = code.trim();
+
+        System.out.println("검증 시도 -> 이메일: [" + trimmedEmail + "], 코드: [" + trimmedCode + "]");
+
+        VerificationCode savedInfo = verificationCodeRepository.findById(trimmedEmail)
                 .orElseThrow(() -> new IllegalArgumentException("인증번호가 만료되었거나 요청되지 않았습니다."));
 
-        if (savedInfo.isExpired()) {
-            verificationCodeRepository.delete(savedInfo);
-            throw new IllegalArgumentException("인증번호가 만료되었습니다.");
-        }
-
-        if (!savedInfo.getCode().equals(code)) {
+        // 저장된 코드와 비교할 때도 공백 제거
+        if (!savedInfo.getCode().trim().equals(trimmedCode)) {
             throw new IllegalArgumentException("인증번호가 일치하지 않습니다.");
         }
 
@@ -192,13 +209,6 @@ public class AuthService {
                 .orElseThrow(() -> new IllegalArgumentException("사용자 정보가 없습니다."));
 
         String username = user.getUsername();
-
-        // 아이디 마스킹 처리 (예: goji***)
-        if (username.length() > 3) {
-            username = username.substring(0, 3) + "***";
-        } else {
-            username = username + "***";
-        }
 
         verificationCodeRepository.delete(savedInfo);
         return username; // 마스킹된 아이디 반환
@@ -214,24 +224,33 @@ public class AuthService {
         return new UsernamePasswordAuthenticationToken(user.getUsername(), null, authorities);
     }
 
-    /**
-     * [유지] 비밀번호 재설정용 유저 확인 (이메일 기반)
-     */
+/**
+ * [수정 완료] 비밀번호 재설정용 유저 확인 (공백 제거 로직 추가)
+ */
     @Transactional
     public void checkUserForReset(PasswordResetCheckRequestDto request) {
-        User user = memberRepository.findByEmail(request.getEmail())
+        // 1. 입력값에서 공백을 미리 제거합니다.
+        String trimmedEmail = request.getEmail().trim();
+        String trimmedName = request.getName().trim();
+        String trimmedUsername = request.getUsername().trim();
+
+        // 2. 이메일로 유저를 찾습니다.
+        User user = memberRepository.findByEmail(trimmedEmail)
                 .orElseThrow(() -> new IllegalArgumentException("가입되지 않은 이메일입니다."));
 
-        if (!user.getName().equals(request.getName())) {
+        // 3. 이름이 일치하는지 확인합니다.
+        if (!user.getName().equals(trimmedName)) {
             throw new IllegalArgumentException("사용자 정보가 일치하지 않습니다.");
         }
 
-        // 아이디 일치 여부도 체크하고 싶다면 DTO에 아이디 추가 후 여기서 비교 가능
-        // if (!user.getUsername().equals(request.getUsername())) ...
+        // 4. 아이디(Username)가 일치하는지 확인합니다.
+        if (!user.getUsername().equals(trimmedUsername)) {
+            throw new IllegalArgumentException("아이디 정보가 일치하지 않습니다.");
+        }
 
-        this.sendVerificationCode(request.getEmail(), request.getName());
+        // 모든 정보가 일치하면 실제 메일 발송을 호출합니다.
+        this.sendVerificationCode(trimmedEmail, trimmedName);
     }
-
     /**
      * [유지] 코드 검증 및 리셋 토큰 발급
      */
