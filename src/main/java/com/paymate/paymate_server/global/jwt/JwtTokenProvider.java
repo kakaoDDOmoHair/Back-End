@@ -64,9 +64,8 @@ public class JwtTokenProvider {
     // 2. 토큰에서 인증 정보(유저 정보) 꺼내기
     public Authentication getAuthentication(String accessToken) {
         Claims claims = parseClaims(accessToken);
-
         if (claims.get("auth") == null) {
-            throw new RuntimeException("권한 정보가 없는 토큰입니다.");
+            return null;
         }
 
         Collection<? extends GrantedAuthority> authorities =
@@ -114,8 +113,20 @@ public class JwtTokenProvider {
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
-    // 4. 토큰에서 회원 정보(이메일) 추출 (필터에서 사용)
+    // 4. 토큰에서 회원 정보(이메일) 추출 (비밀번호 재설정 및 필터에서 공통 사용)
     public String getSubject(String token) {
-        return parseClaims(token).getSubject();
+        try {
+            // parseClaims를 통해 토큰의 모든 정보를 가져온 후, 그 중 Subject(보통 이메일)를 반환합니다.
+            Claims claims = parseClaims(token);
+
+            if (claims == null) {
+                throw new IllegalArgumentException("토큰의 클레임 정보를 가져올 수 없습니다.");
+            }
+
+            return claims.getSubject();
+        } catch (Exception e) {
+            // 토큰이 올바르지 않거나 해석 중 에러가 발생할 경우에 대한 처리
+            throw new IllegalArgumentException("토큰에서 사용자 정보를 추출하는 데 실패했습니다: " + e.getMessage());
+        }
     }
 }
