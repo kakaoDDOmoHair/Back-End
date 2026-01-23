@@ -156,4 +156,6 @@ public class ModificationService {
 
         log.info("🔔 [Notification] 알림 전송 완료: User ID {}", request.getRequester().getId());
     }
+    // AttendanceService.java 내부
+
 }
