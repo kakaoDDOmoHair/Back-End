@@ -270,4 +270,17 @@ public class AttendanceService {
             throw new IllegalArgumentException("시간 형식이 올바르지 않습니다. (예: 09:00) 입력값: " + newValue);
         }
     }
+    // ✅ 여기에 붙여넣으세요!
+    @Transactional
+    public void updateByRequest(Long attendanceId, String afterValue) {
+        // 1. 수정할 근태 기록 찾기
+        Attendance attendance = attendanceRepository.findById(attendanceId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 근태 기록이 없습니다. ID=" + attendanceId));
+
+        // 2. 값 변경 로직 (String -> 시간/데이터 변환 필요)
+        // 예시: LocalDateTime parsedTime = LocalDateTime.parse(afterValue);
+        // attendance.updateTime(parsedTime);
+
+        System.out.println("근태 기록 수정 완료: " + attendanceId + " -> " + afterValue);
+    }
 }
