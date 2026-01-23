@@ -37,10 +37,6 @@ public class User {
     @Column(nullable = false, length = 50)
     private String name;
 
-    // ▼▼▼ [여기 추가했습니다!] ▼▼▼
-    @Column(name = "birth_date", length = 20)
-    private String birthDate; // 생년월일 (예: "2002-10-22")
-
     @Column(length = 20)
     private String phone;
 
