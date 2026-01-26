@@ -16,10 +16,18 @@ public class VerificationController {
 
     private final VerificationService verificationService;
 
-    // 계좌 실명 인증 API
-    // 최종 URL: /api/v1/auth/verify-account
-    @PostMapping("/verify-account") // 👈 [수정 2] account -> verify-account 로 변경
+    // ✅ 1. 실명 인증 API (프론트엔드가 쓰는 것)
+    // POST /api/v1/auth/verify-account
+    @PostMapping("/verify-account")
     public ResponseEntity<VerificationDto.Response> verifyAccount(@RequestBody VerificationDto.Request request) {
         return ResponseEntity.ok(verificationService.verifyAccount(request));
+    }
+
+    // 🛠️ 2. [테스트용] 가짜 계좌 데이터 등록 API (Postman용)
+    // POST /api/v1/auth/test/register
+    @PostMapping("/test/register")
+    public ResponseEntity<String> registerTestAccount(@RequestBody VerificationDto.Request request) {
+        Long id = verificationService.createTestAccount(request);
+        return ResponseEntity.ok("✅ 계좌 등록 완료 (ID: " + id + ")");
     }
 }
