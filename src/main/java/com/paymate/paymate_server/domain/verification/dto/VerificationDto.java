@@ -1,5 +1,6 @@
 package com.paymate.paymate_server.domain.verification.dto;
 
+import lombok.*;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -8,6 +9,7 @@ import lombok.AllArgsConstructor;
 public class VerificationDto {
 
     @Getter
+    @Setter
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Request {
