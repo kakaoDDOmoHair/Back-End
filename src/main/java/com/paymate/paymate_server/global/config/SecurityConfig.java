@@ -24,32 +24,39 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                // 1. CSRF, FormLogin, HttpBasic 비활성화 (JWT를 쓰기 때문)
+                // 1. CSRF, FormLogin, HttpBasic 비활성화
                 .csrf(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
 
-                // 2. 세션을 사용하지 않도록 설정 (무상태성)
+                // 2. 세션 미사용 (JWT)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
                 // 3. 요청 권한 설정
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll() // Swagger는 누구나 접근 가능
-                        .requestMatchers("/api/v1/users/login", "/api/v1/users/join").permitAll() // 로그인, 회원가입은 누구나 가능
+                        // [공통] Swagger & 기본 인증
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                        .requestMatchers("/api/v1/users/login", "/api/v1/users/join").permitAll()
                         .requestMatchers("/api/v1/users/password", "/api/v1/users/withdraw").permitAll()
                         .requestMatchers("/api/v1/users/me", "/api/v1/users/detail").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
-                        .requestMatchers("/api/v1/stores/**").permitAll()    // 매장 기능 허용
-                        .requestMatchers("/api/v1/contracts/**").permitAll() // 👈 추가: 계약서 기능도 허용!
+
+                        // [테스트용 권한 해제] - 나중에 보안 강화 필요
+                        .requestMatchers("/api/v1/stores/**").permitAll()
+                        .requestMatchers("/api/v1/contracts/**").permitAll()
+                        .requestMatchers("/api/v1/manuals/**").permitAll() // 👈 [추가됨] 매뉴얼 기능 허용!
+                        .requestMatchers("/api/v1/test/**").permitAll()    // 👈 [추천] 가짜 은행 등 테스트 API 허용
+
                         .requestMatchers("/api/v1/verification/**").permitAll()
                         .requestMatchers("/api/v1/schedules/**").permitAll()
                         .requestMatchers("/api/v1/salary/**").permitAll()
-                        .requestMatchers("/api/v1/modifications/**").authenticated()
-                        .anyRequest().authenticated() // 그 외 모든 요청은 인증 필요
 
+                        // [인증 필요]
+                        .requestMatchers("/api/v1/modifications/**").authenticated()
+                        .anyRequest().authenticated()
                 )
 
-                // 4. JWT 필터를 UsernamePasswordAuthenticationFilter 앞에 추가
+                // 4. JWT 필터 추가
                 .addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
