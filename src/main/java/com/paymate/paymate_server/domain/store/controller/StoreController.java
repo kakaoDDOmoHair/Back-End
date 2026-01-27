@@ -5,7 +5,6 @@ import com.paymate.paymate_server.domain.store.service.StoreService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.bind.annotation.RequestBody;
 
 @RestController
 @RequestMapping("/api/v1/stores")
@@ -42,11 +41,17 @@ public class StoreController {
         return ResponseEntity.ok(response);
     }
 
-    // 5. 매장 가입 (초대코드) API
     @PostMapping("/join")
-    public ResponseEntity<String> joinStore(@RequestBody JoinRequest request) {
+    public ResponseEntity<JoinResponse> joinStore(@RequestBody JoinRequest request) {
+
+        // 🕵️‍♂️ [감시 카메라] 들어오는 값을 눈으로 확인해봅시다!
+        System.out.println("======================================");
+        System.out.println("🚨 프론트에서 보낸 ID: " + request.getUserId());
+        System.out.println("🚨 프론트에서 보낸 코드: " + request.getInviteCode());
+        System.out.println("======================================");
+
         Long storeId = storeService.joinStore(request);
-        return ResponseEntity.ok("매장 가입 성공! Store ID: " + storeId);
+        return ResponseEntity.ok(new JoinResponse("매장 가입 성공", storeId));
     }
 
-} // 클래스 끝
+}

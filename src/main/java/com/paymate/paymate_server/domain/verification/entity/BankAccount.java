@@ -21,4 +21,7 @@ public class BankAccount {
     private String bankName;      // 은행명 (예: 신한은행)
     private String accountNumber; // 계좌번호
     private String ownerName;     // 예금주
+
+    @Column(name = "user_id")
+    private Long userId;
 }

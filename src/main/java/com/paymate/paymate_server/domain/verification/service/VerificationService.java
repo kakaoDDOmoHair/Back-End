@@ -52,6 +52,7 @@ public class VerificationService {
                 .bankName(request.getBankName())
                 .accountNumber(request.getAccountNumber())
                 .ownerName(request.getOwnerName())
+                .userId(request.getUserId())
                 .build();
 
         return bankRepository.save(account).getId();

@@ -1,7 +1,7 @@
 package com.paymate.paymate_server.domain.store.service;
 
-import com.paymate.paymate_server.domain.member.entity.Account; // 👈 import 확인
-import com.paymate.paymate_server.domain.member.repository.AccountRepository; // 👈 import 확인
+import com.paymate.paymate_server.domain.member.entity.Account;
+import com.paymate.paymate_server.domain.member.repository.AccountRepository;
 import com.paymate.paymate_server.domain.member.entity.User;
 import com.paymate.paymate_server.domain.member.enums.UserRole;
 import com.paymate.paymate_server.domain.member.repository.MemberRepository;
@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.UUID; // 👈 [추가] 랜덤 코드 생성을 위해 필요
 
 @Service
 @RequiredArgsConstructor
@@ -29,10 +30,10 @@ public class StoreService {
     private final StoreRepository storeRepository;
     private final MemberRepository memberRepository;
     private final EmploymentRepository employmentRepository;
-    private final AccountRepository accountRepository; // 👈 [추가] 계좌 저장을 위해 필요
+    private final AccountRepository accountRepository;
     private final AesUtil aesUtil;
 
-    // 1. 매장 생성 (계좌 자동 생성 포함)
+    // 1. 매장 생성 (계좌 자동 생성 포함 + 초대코드 자동 생성)
     public Long createStore(StoreRequest request) {
         // 1-1. 사용자 검증
         User owner = memberRepository.findById(request.getUserId())
@@ -42,6 +43,9 @@ public class StoreService {
         if (request.getVerificationToken() == null || !request.getVerificationToken().startsWith("VERIFIED_")) {
             throw new IllegalArgumentException("계좌 실명 인증이 완료되지 않았습니다. 인증 후 다시 시도해주세요.");
         }
+
+        // 💡 [수정됨] 초대 코드 중복 방지를 위한 랜덤 생성 로직 (8자리 대문자)
+        String uniqueInviteCode = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
 
         // 1-3. 매장 정보 저장
         Store store = Store.builder()
@@ -60,13 +64,13 @@ public class StoreService {
                 .payRule(request.getPayRule())
                 .bankName(request.getBankName())
                 .accountNumber(request.getAccountNumber())
-                .inviteCode(request.getInviteCode())
+                .inviteCode(uniqueInviteCode) // 👈 [변경] 여기서 랜덤 코드가 들어갑니다!
                 .build();
 
         storeRepository.save(store); // 매장 저장 완료
 
         // ==========================================================
-        // ▼ [추가된 로직] 입력받은 계좌 정보를 Account 테이블에 자동 저장
+        // ▼ 입력받은 계좌 정보를 Account 테이블에 자동 저장
         // ==========================================================
         try {
             // (1) 계좌번호 암호화 (보안 필수!)
@@ -76,7 +80,7 @@ public class StoreService {
             Account account = Account.builder()
                     .bankName(request.getBankName())       // 요청받은 은행명
                     .accountNumber(encryptedAccountNumber) // 암호화된 계좌번호
-                    .balance(0L)                            // 초기 잔액 0원
+                    .balance(0L)                           // 초기 잔액 0원
                     .user(owner)                           // 현재 사장님과 연결
                     .build();
 
@@ -112,6 +116,7 @@ public class StoreService {
 
     // 4. 대시보드 통계 조회 (Mock)
     public DashboardResponse getStoreDashboard(Long storeId) {
+        // 실제 로직이 구현되기 전이므로 Mock 데이터 반환
         return new DashboardResponse(4250000L, 5.2, "2026-01-05");
     }
 
