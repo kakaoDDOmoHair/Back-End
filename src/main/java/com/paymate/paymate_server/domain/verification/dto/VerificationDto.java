@@ -14,6 +14,7 @@ public class VerificationDto {
         private String bankName;      // 은행명
         private String accountNumber; // 계좌번호
         private String ownerName;
+        private Long userId;
     }
 
     @Getter

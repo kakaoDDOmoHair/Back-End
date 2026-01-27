@@ -40,29 +40,35 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final JavaMailSender mailSender;
 
-    /**
-     * 로그인
-     */
+    // AuthService.java
+
     @Transactional
-    public TokenResponseDto login(LoginRequestDto request) {
+    public LoginResponseDto login(LoginRequestDto request) { // 👈 반환 타입 변경 (TokenResponseDto -> LoginResponseDto)
+
+        // 1. ID 검증
         User user = memberRepository.findByUsername(request.getUsername())
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 아이디입니다."));
 
+        // 2. 비밀번호 검증
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new IllegalArgumentException("비밀번호가 일치하지 않습니다.");
         }
 
+        // 3. 토큰 생성
         Authentication authentication = getAuthentication(user);
         TokenInfo tokenInfo = jwtTokenProvider.generateToken(authentication);
 
+        // 4. 리프레시 토큰 저장
         refreshTokenRepository.save(RefreshToken.builder()
                 .email(user.getUsername())
                 .token(tokenInfo.getRefreshToken())
                 .build());
 
-        return TokenResponseDto.builder()
+        // 5. 🌟 [수정됨] LoginResponseDto 생성 및 반환
+        return LoginResponseDto.builder()
                 .accessToken(tokenInfo.getAccessToken())
                 .refreshToken(tokenInfo.getRefreshToken())
+                .userId(user.getId())         // 👈 드디어 들어가는 숫자 ID! (DB의 user_id)
                 .role(user.getRole().name())
                 .name(user.getName())
                 .build();

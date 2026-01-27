@@ -19,8 +19,12 @@ public class AuthController {
 
     // 1. 로그인
     @PostMapping("/login")
-    public ResponseEntity<TokenResponseDto> login(@RequestBody LoginRequestDto request) {
-        return ResponseEntity.ok(authService.login(request));
+    public ResponseEntity<LoginResponseDto> login(@RequestBody LoginRequestDto request) {
+        // 서비스 실행
+        LoginResponseDto response = authService.login(request);
+
+        // 응답 반환
+        return ResponseEntity.ok(response);
     }
 
     // 2. 토큰 재발급
