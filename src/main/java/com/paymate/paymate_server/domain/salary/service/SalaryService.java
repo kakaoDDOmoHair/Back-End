@@ -25,6 +25,14 @@ import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.Font;
+import org.apache.poi.ss.usermodel.HorizontalAlignment;
+import org.apache.poi.ss.usermodel.VerticalAlignment;
+import org.apache.poi.ss.usermodel.BorderStyle;
+import org.apache.poi.ss.usermodel.IndexedColors;
+import org.apache.poi.ss.usermodel.FillPatternType;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -209,6 +217,8 @@ public class SalaryService {
                     .userId(worker.getId())
                     // 아까 동기화 성공한 유저의 accountId 사용
                     .accountId(worker.getAccountId() != null ? Long.valueOf(worker.getAccountId()) : null)
+                    // 이메일/엑셀 등에서 사용할 paymentId
+                    .paymentId(paymentOpt.map(SalaryPayment::getId).orElse(null))
                     .build();
         }).collect(Collectors.toList());
 
@@ -290,19 +300,75 @@ public class SalaryService {
     public void generateSalaryExcel(Long storeId, int year, int month, HttpServletResponse response) throws IOException {
         List<SalaryPayment> payments = salaryPaymentRepository.findAllByStoreIdAndYearAndMonth(storeId, year, month);
         Store store = storeRepository.findById(storeId).orElseThrow();
+
         Workbook workbook = new XSSFWorkbook();
         Sheet sheet = workbook.createSheet(year + "년 " + month + "월 급여대장");
+
+        // 헤더 스타일
+        CellStyle headerStyle = workbook.createCellStyle();
+        Font headerFont = workbook.createFont();
+        headerFont.setBold(true);
+        headerFont.setFontHeightInPoints((short) 11);
+        headerStyle.setFont(headerFont);
+        headerStyle.setAlignment(HorizontalAlignment.CENTER);
+        headerStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        headerStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+        headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        headerStyle.setBorderTop(BorderStyle.THIN);
+        headerStyle.setBorderBottom(BorderStyle.THIN);
+        headerStyle.setBorderLeft(BorderStyle.THIN);
+        headerStyle.setBorderRight(BorderStyle.THIN);
+
+        // 본문 기본 스타일
+        CellStyle bodyStyle = workbook.createCellStyle();
+        bodyStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        bodyStyle.setBorderTop(BorderStyle.THIN);
+        bodyStyle.setBorderBottom(BorderStyle.THIN);
+        bodyStyle.setBorderLeft(BorderStyle.THIN);
+        bodyStyle.setBorderRight(BorderStyle.THIN);
+
+        // 금액 스타일 (숫자 포맷)
+        CellStyle amountStyle = workbook.createCellStyle();
+        amountStyle.cloneStyleFrom(bodyStyle);
+        amountStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0"));
+
+        // 헤더 행
         Row headerRow = sheet.createRow(0);
-        headerRow.createCell(0).setCellValue("성명"); headerRow.createCell(1).setCellValue("지급액");
-        headerRow.createCell(2).setCellValue("정산상태"); headerRow.createCell(3).setCellValue("정산일자");
+        String[] headers = {"성명", "지급액", "정산상태", "정산일자"};
+        for (int i = 0; i < headers.length; i++) {
+            Cell cell = headerRow.createCell(i);
+            cell.setCellValue(headers[i]);
+            cell.setCellStyle(headerStyle);
+        }
+
+        // 데이터 행
         int rowIdx = 1;
         for (SalaryPayment payment : payments) {
             Row row = sheet.createRow(rowIdx++);
-            row.createCell(0).setCellValue(payment.getUser().getName());
-            row.createCell(1).setCellValue(payment.getTotalAmount());
-            row.createCell(2).setCellValue(payment.getStatus().toString());
-            row.createCell(3).setCellValue(payment.getCreatedAt().toString());
+
+            Cell nameCell = row.createCell(0);
+            nameCell.setCellValue(payment.getUser().getName());
+            nameCell.setCellStyle(bodyStyle);
+
+            Cell amountCell = row.createCell(1);
+            amountCell.setCellValue(payment.getTotalAmount());
+            amountCell.setCellStyle(amountStyle);
+
+            Cell statusCell = row.createCell(2);
+            statusCell.setCellValue(payment.getStatus().toString());
+            statusCell.setCellStyle(bodyStyle);
+
+            Cell dateCell = row.createCell(3);
+            dateCell.setCellValue(payment.getCreatedAt().toString());
+            dateCell.setCellStyle(bodyStyle);
         }
+
+        // 컬럼 너비 자동 조정 + 헤더 고정
+        for (int i = 0; i < headers.length; i++) {
+            sheet.autoSizeColumn(i);
+        }
+        sheet.createFreezePane(0, 1);
+
         String encodedFileName = UriUtils.encode(year + "년" + month + "월_급여대장_" + store.getName(), StandardCharsets.UTF_8);
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setHeader("Content-Disposition", "attachment; filename=\"" + encodedFileName + ".xlsx\"; filename*=UTF-8''" + encodedFileName + ".xlsx");
@@ -401,5 +467,95 @@ public class SalaryService {
         context.setVariable("hourlyWage", (payment.getUser().getHourlyWage() != null) ? payment.getUser().getHourlyWage() : 9860);
 
         return templateEngine.process("payslip-template", context);
+    }
+
+    // [추가] 개인별 급여대장 엑셀 다운로드
+    public void generateUserSalaryExcel(Long storeId, Long userId, int year, int month, HttpServletResponse response) throws IOException {
+        Store store = storeRepository.findById(storeId)
+                .orElseThrow(() -> new IllegalArgumentException("매장 정보를 찾을 수 없습니다."));
+        User user = memberRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("알바생 정보를 찾을 수 없습니다."));
+
+        LocalDate periodStart = LocalDate.of(year, month, 1);
+        Optional<SalaryPayment> paymentOpt = salaryPaymentRepository.findByUserAndStoreAndPeriodStart(user, store, periodStart);
+
+        Workbook workbook = new XSSFWorkbook();
+        Sheet sheet = workbook.createSheet(year + "년 " + month + "월 " + user.getName() + " 급여대장");
+
+        // 헤더 스타일
+        CellStyle headerStyle = workbook.createCellStyle();
+        Font headerFont = workbook.createFont();
+        headerFont.setBold(true);
+        headerFont.setFontHeightInPoints((short) 11);
+        headerStyle.setFont(headerFont);
+        headerStyle.setAlignment(HorizontalAlignment.CENTER);
+        headerStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        headerStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+        headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        headerStyle.setBorderTop(BorderStyle.THIN);
+        headerStyle.setBorderBottom(BorderStyle.THIN);
+        headerStyle.setBorderLeft(BorderStyle.THIN);
+        headerStyle.setBorderRight(BorderStyle.THIN);
+
+        // 본문 기본 스타일
+        CellStyle bodyStyle = workbook.createCellStyle();
+        bodyStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        bodyStyle.setBorderTop(BorderStyle.THIN);
+        bodyStyle.setBorderBottom(BorderStyle.THIN);
+        bodyStyle.setBorderLeft(BorderStyle.THIN);
+        bodyStyle.setBorderRight(BorderStyle.THIN);
+
+        // 금액 스타일 (숫자 포맷)
+        CellStyle amountStyle = workbook.createCellStyle();
+        amountStyle.cloneStyleFrom(bodyStyle);
+        amountStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0"));
+
+        // 헤더 행
+        Row headerRow = sheet.createRow(0);
+        String[] headers = {"성명", "지급액", "정산상태", "정산일자"};
+        for (int i = 0; i < headers.length; i++) {
+            Cell cell = headerRow.createCell(i);
+            cell.setCellValue(headers[i]);
+            cell.setCellStyle(headerStyle);
+        }
+
+        // 데이터 행 (해당 알바생 1명)
+        Row row = sheet.createRow(1);
+
+        SalaryPayment payment = paymentOpt.orElse(null);
+        String status = (payment != null) ? payment.getStatus().toString() : "NOT_STARTED";
+        long amount = (payment != null) ? payment.getTotalAmount() : 0L;
+        String createdAt = (payment != null && payment.getCreatedAt() != null)
+                ? payment.getCreatedAt().toString()
+                : "-";
+
+        Cell nameCell = row.createCell(0);
+        nameCell.setCellValue(user.getName());
+        nameCell.setCellStyle(bodyStyle);
+
+        Cell amountCell = row.createCell(1);
+        amountCell.setCellValue(amount);
+        amountCell.setCellStyle(amountStyle);
+
+        Cell statusCell = row.createCell(2);
+        statusCell.setCellValue(status);
+        statusCell.setCellStyle(bodyStyle);
+
+        Cell dateCell = row.createCell(3);
+        dateCell.setCellValue(createdAt);
+        dateCell.setCellStyle(bodyStyle);
+
+        // 컬럼 너비 자동 조정 + 헤더 고정
+        for (int i = 0; i < headers.length; i++) {
+            sheet.autoSizeColumn(i);
+        }
+        sheet.createFreezePane(0, 1);
+
+        String fileName = year + "년" + month + "월_" + user.getName() + "_급여대장_" + store.getName();
+        String encodedFileName = UriUtils.encode(fileName, StandardCharsets.UTF_8);
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition", "attachment; filename=\"" + encodedFileName + ".xlsx\"; filename*=UTF-8''" + encodedFileName + ".xlsx");
+        workbook.write(response.getOutputStream());
+        workbook.close();
     }
 }

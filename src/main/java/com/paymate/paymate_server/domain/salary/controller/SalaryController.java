@@ -88,6 +88,17 @@ public class SalaryController {
         salaryService.generateSalaryExcel(storeId, year, month, response);
     }
 
+    // 8-1. 개인별 급여대장 엑셀 다운로드
+    @GetMapping("/excel/download/user")
+    public void downloadUserSalaryExcel(
+            @RequestParam Long storeId,
+            @RequestParam Long userId,
+            @RequestParam int year,
+            @RequestParam int month,
+            HttpServletResponse response) throws IOException {
+        salaryService.generateUserSalaryExcel(storeId, userId, year, month, response);
+    }
+
     // 9. 정산하기
     @PostMapping("/execute")
     public ResponseEntity<Map<String, String>> executeNewPayment(
