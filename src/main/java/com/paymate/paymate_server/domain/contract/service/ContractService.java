@@ -10,14 +10,21 @@ import com.paymate.paymate_server.domain.member.repository.MemberRepository;
 import com.paymate.paymate_server.domain.store.entity.Store;
 import com.paymate.paymate_server.domain.store.repository.StoreRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -27,7 +34,10 @@ public class ContractService {
     private final ContractRepository contractRepository;
     private final MemberRepository memberRepository;
     private final StoreRepository storeRepository;
-    // NotificationRepository 제거됨 (알림 안 보낼 거니까 필요 없음)
+
+    // application.properties에 설정된 경로 (없으면 프로젝트 루트의 uploads 폴더 사용)
+    @Value("${file.upload-dir:./uploads/}")
+    private String uploadDir;
 
     // 1. 계약서 생성
     public Long createContract(ContractRequest request) {
@@ -90,18 +100,57 @@ public class ContractService {
         if (request.getStatus() != null) contract.setStatus(request.getStatus());
     }
 
-    // 5. OCR 스캔 Mock
-    public Map<String, Object> mockOcrScan() {
+    // 5. OCR 스캔 (실제 파일 저장 + 랜덤 결과 반환)
+    public Map<String, Object> scanContract(MultipartFile file, Long storeId) throws IOException {
+        // 1. 저장할 디렉토리 생성
+        Path uploadPath = Paths.get(uploadDir);
+        if (!Files.exists(uploadPath)) {
+            Files.createDirectories(uploadPath);
+        }
+
+        // 2. 파일명 중복 방지를 위한 UUID 적용
+        String originalFilename = file.getOriginalFilename();
+        String savedFileName = UUID.randomUUID().toString() + "_" + originalFilename;
+        Path filePath = uploadPath.resolve(savedFileName);
+
+        // 3. 파일 저장
+        file.transferTo(filePath.toFile());
+
+        // 4. 접근 가능한 URL 생성
+        // 안드로이드 에뮬레이터에서 localhost 접근 시 10.0.2.2 사용
+        String fileUrl = "http://10.0.2.2:8080/uploads/" + savedFileName;
+
+        // 5. OCR 결과 시뮬레이션 (랜덤 데이터 생성하여 중복 방지)
         Map<String, Object> result = new HashMap<>();
         result.put("status", "success");
-        result.put("fileUrl", "https://mock-s3-bucket.com/contract_sample.jpg");
+        result.put("fileUrl", fileUrl); // 저장된 실제 이미지 URL 반환
 
         Map<String, Object> ocrResult = new HashMap<>();
-        ocrResult.put("workerName", "김알바");
-        ocrResult.put("wage", 10030);
-        ocrResult.put("startDate", "2026-01-01");
+        int randomNum = (int) (Math.random() * 1000); // 0~999 랜덤 숫자
+        ocrResult.put("workerName", "김알바_" + randomNum);
+        ocrResult.put("wage", 9860 + (randomNum * 10)); // 시급도 랜덤하게 변동
+        ocrResult.put("startDate", "2026-02-01");
 
         result.put("ocrResult", ocrResult);
+
+        System.out.println("✅ 파일 업로드 완료: " + filePath.toString());
         return result;
+    }
+
+    // 6. 계약서 삭제
+    public void deleteContract(Long contractId) {
+        contractRepository.deleteById(contractId);
+    }
+
+    // 7. 다운로드 링크 반환
+    public String getDownloadUrl(Long contractId) {
+        Contract contract = contractRepository.findById(contractId)
+                .orElseThrow(() -> new IllegalArgumentException("계약서가 없습니다."));
+
+        if (contract.getFileUrl() != null && !contract.getFileUrl().isEmpty()) {
+            return contract.getFileUrl();
+        }
+        // 파일이 없을 경우 더미 PDF 반환
+        return "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf";
     }
 }
