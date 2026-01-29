@@ -3,7 +3,7 @@ package com.paymate.paymate_server.domain.schedule.service;
 import com.paymate.paymate_server.domain.member.entity.User;
 import com.paymate.paymate_server.domain.member.repository.MemberRepository;
 import com.paymate.paymate_server.domain.notification.enums.NotificationType;
-import com.paymate.paymate_server.domain.notification.service.NotificationService; // 👈 서비스 Import
+import com.paymate.paymate_server.domain.notification.service.NotificationService;
 import com.paymate.paymate_server.domain.schedule.dto.ScheduleDto;
 import com.paymate.paymate_server.domain.schedule.entity.Schedule;
 import com.paymate.paymate_server.domain.schedule.repository.ScheduleRepository;
@@ -29,10 +29,9 @@ public class ScheduleService {
     private final ScheduleRepository scheduleRepository;
     private final StoreRepository storeRepository;
     private final MemberRepository memberRepository;
-    // NotificationRepository 제거됨
-    private final NotificationService notificationService; // 👈 알림 서비스(FCM 포함) 사용
+    private final NotificationService notificationService;
 
-    // 1. 근무 스케줄 등록 (사장님이 배정 시 알림 발송)
+    // 1. 근무 스케줄 등록
     @Transactional
     public ScheduleDto.CreateResponse createSchedule(ScheduleDto.CreateRequest request) {
         Store store = storeRepository.findById(request.getStoreId())
@@ -40,17 +39,22 @@ public class ScheduleService {
         User worker = memberRepository.findById(request.getUserId())
                 .orElseThrow(() -> new IllegalArgumentException("사용자 없음"));
 
+        // DTO(String) -> Entity(LocalTime/Integer) 변환
+        LocalTime start = LocalTime.parse(request.getStartTime());
+        LocalTime end = LocalTime.parse(request.getEndTime());
+        Integer breakMin = request.getBreakTime() != null ? Integer.parseInt(request.getBreakTime()) : 0;
+
         Schedule schedule = Schedule.builder()
                 .store(store)
                 .user(worker)
                 .workDate(request.getWorkDate())
-                .startTime(request.getStartTime())
-                .endTime(request.getEndTime())
+                .startTime(start)
+                .endTime(end)
+                .breakTime(breakMin)
                 .build();
 
         scheduleRepository.save(schedule);
 
-        // 🔔 [수정됨] 스케줄 배정 알림 (DB저장 + 푸시발송)
         notificationService.send(
                 worker,
                 NotificationType.WORK,
@@ -71,22 +75,20 @@ public class ScheduleService {
                         .date(s.getWorkDate().toString())
                         .userId(s.getUser().getId())
                         .name(s.getUser().getName())
-                        .time(s.getStartTime() + "~" + s.getEndTime())
+                        .time(s.getStartTime().toString().substring(0, 5) + "~" + s.getEndTime().toString().substring(0, 5))
                         .build())
                 .collect(Collectors.toList());
     }
 
-    // 5. 주간 근무 시간표 조회 (사장님용)
+    // 3. 주간 근무 시간표 조회 (사장님용)
     public List<ScheduleDto.WeeklyResponse> getWeeklySchedule(Long storeId, LocalDate startDate) {
         Store store = storeRepository.findById(storeId)
                 .orElseThrow(() -> new IllegalArgumentException("매장 없음"));
 
         LocalDate endDate = startDate.plusDays(6);
-
         List<Schedule> schedules = scheduleRepository.findByStoreAndWorkDateBetween(store, startDate, endDate);
 
         List<ScheduleDto.WeeklyResponse> response = new ArrayList<>();
-
         Map<LocalDate, List<Schedule>> byDate = schedules.stream()
                 .collect(Collectors.groupingBy(Schedule::getWorkDate));
 
@@ -94,44 +96,56 @@ public class ScheduleService {
             List<Schedule> dailySchedules = byDate.getOrDefault(date, Collections.emptyList());
             String dayStr = date.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.ENGLISH).toUpperCase();
 
-            Map<LocalTime, List<String>> byStartTime = dailySchedules.stream()
+            Map<String, List<ScheduleDto.WeeklyResponse.WorkerInfo>> byTimeRange = dailySchedules.stream()
                     .collect(Collectors.groupingBy(
-                            Schedule::getStartTime,
-                            Collectors.mapping(s -> s.getUser().getName(), Collectors.toList())
+                            s -> s.getStartTime().toString().substring(0, 5) + "~" + s.getEndTime().toString().substring(0, 5),
+                            Collectors.mapping(s -> ScheduleDto.WeeklyResponse.WorkerInfo.builder()
+                                    .scheduleId(s.getId())
+                                    .name(s.getUser().getName())
+                                    .breakTime(s.getBreakTime()) // Integer로 반환
+                                    .build(), Collectors.toList())
                     ));
 
-            for (Map.Entry<LocalTime, List<String>> entry : byStartTime.entrySet()) {
+            for (Map.Entry<String, List<ScheduleDto.WeeklyResponse.WorkerInfo>> entry : byTimeRange.entrySet()) {
                 response.add(ScheduleDto.WeeklyResponse.builder()
                         .day(dayStr)
-                        .time(entry.getKey().toString())
-                        .names(entry.getValue())
+                        .time(entry.getKey())
+                        .workers(entry.getValue())
                         .build());
             }
         }
         return response;
     }
 
-    // 6. 내 근무 시간표 조회 (알바생용)
+    // 4. 내 근무 시간표 조회 (알바생용)
     public List<ScheduleDto.MyWeeklyResponse> getMyWeeklySchedule(Long userId, LocalDate startDate) {
-        LocalDate endDate = startDate.plusDays(6);
-
-        return scheduleRepository.findMyWeeklySchedule(userId, startDate, endDate).stream()
+        return scheduleRepository.findAllByUser_IdOrderByWorkDateDesc(userId).stream()
                 .map(s -> ScheduleDto.MyWeeklyResponse.builder()
                         .date(s.getWorkDate())
-                        .startTime(s.getStartTime())
-                        .endTime(s.getEndTime())
+                        .startTime(s.getStartTime().toString().substring(0, 5))
+                        .endTime(s.getEndTime().toString().substring(0, 5))
+                        .breakTime(s.getBreakTime()) // Integer 반환 (DTO가 Integer일 때)
                         .build())
-                .sorted(Comparator.comparing(ScheduleDto.MyWeeklyResponse::getDate))
                 .collect(Collectors.toList());
     }
 
-    // 7. 근무 스케줄 직접 수정 (사장님 - 기존 API용)
+    // 5. 사장님 직접 수정 (수정 요청 처리)
     @Transactional
     public Map<String, Object> updateSchedule(Long scheduleId, ScheduleDto.UpdateRequest request) {
         Schedule schedule = scheduleRepository.findById(scheduleId)
                 .orElseThrow(() -> new IllegalArgumentException("스케줄 없음"));
 
-        schedule.updateTime(request.getWorkDate(), request.getStartTime(), request.getEndTime());
+        // DTO(String) -> LocalTime 변환
+        LocalTime start = LocalTime.parse(request.getStartTime());
+        LocalTime end = LocalTime.parse(request.getEndTime());
+
+        // breakTime 변환
+        Integer breakMin = (request.getBreakTime() != null)
+                ? Integer.parseInt(request.getBreakTime())
+                : 0;
+
+        // 엔티티 업데이트 (인자 4개 전달)
+        schedule.updateTime(request.getWorkDate(), start, end, breakMin);
 
         Map<String, Object> data = new HashMap<>();
         data.put("scheduleId", schedule.getId());
@@ -139,26 +153,22 @@ public class ScheduleService {
         return data;
     }
 
-    // =========================================================
-    // ▼ 정정 요청 승인 시 호출되는 메서드
-    // =========================================================
+    // 6. 알바생 정정 요청 승인 시 호출
     @Transactional
     public void updateSchedule(Long scheduleId, String afterValue) {
-        // 1. 스케줄 조회
         Schedule schedule = scheduleRepository.findById(scheduleId)
                 .orElseThrow(() -> new IllegalArgumentException("Schedule not found: " + scheduleId));
 
-        // 2. 문자열 파싱
         String[] times = afterValue.split("~");
         if (times.length != 2) {
-            throw new IllegalArgumentException("시간 형식이 올바르지 않습니다. (예: 09:00~18:00) 입력값: " + afterValue);
+            throw new IllegalArgumentException("시간 형식이 올바르지 않습니다.");
         }
 
         LocalTime newStart = LocalTime.parse(times[0].trim());
         LocalTime newEnd = LocalTime.parse(times[1].trim());
 
-        // 3. 업데이트 수행
-        schedule.updateTime(schedule.getWorkDate(), newStart, newEnd);
+        // 기존 휴게시간 유지하여 4개 인자 전달
+        schedule.updateTime(schedule.getWorkDate(), newStart, newEnd, schedule.getBreakTime());
 
         log.info("✅ [ScheduleService] 스케줄 정정 완료! ID: {}, 변경시간: {} ~ {}", scheduleId, newStart, newEnd);
     }

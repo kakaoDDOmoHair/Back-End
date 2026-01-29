@@ -7,6 +7,7 @@ import com.paymate.paymate_server.domain.contract.entity.Contract;
 import com.paymate.paymate_server.domain.contract.repository.ContractRepository;
 import com.paymate.paymate_server.domain.member.entity.Account;
 import com.paymate.paymate_server.domain.member.entity.User;
+import com.paymate.paymate_server.domain.member.enums.UserRole;
 import com.paymate.paymate_server.domain.member.repository.AccountRepository;
 import com.paymate.paymate_server.domain.member.repository.MemberRepository;
 import com.paymate.paymate_server.domain.notification.enums.NotificationType;
@@ -183,13 +184,41 @@ public class SalaryService {
 
     @Transactional(readOnly = true)
     public Map<String, Object> getMonthlySalaryList(Long storeId, int year, int month) {
+        // 1. 매장에 소속된 모든 '알바생(WORKER)' 조회 (사장님 본인 제외)
+        List<User> workers = memberRepository.findByStoreIdAndRole(storeId, UserRole.WORKER);
+
         LocalDate start = LocalDate.of(year, month, 1);
         LocalDate end = start.withDayOfMonth(start.lengthOfMonth());
-        List<SalaryPayment> payments = salaryPaymentRepository.findAllByStoreAndPeriod(storeId, start, end);
-        long totalAmount = payments.stream().mapToLong(SalaryPayment::getTotalAmount).sum();
-        List<SalaryDto.MonthlyResponse> list = payments.stream().map(p -> SalaryDto.MonthlyResponse.builder()
-                .name(p.getUser().getName()).amount(p.getTotalAmount()).status(p.getStatus().toString()).build()).collect(Collectors.toList());
-        return Map.of("totalAmount", totalAmount, "employeeCount", list.size(), "payments", list);
+
+        // 2. 이미 해당 월에 생성된 정산 내역 조회
+        List<SalaryPayment> existingPayments = salaryPaymentRepository.findAllByStoreAndPeriod(storeId, start, end);
+
+        // 3. 전체 알바생 목록을 기준으로 DTO 생성
+        List<SalaryDto.MonthlyResponse> list = workers.stream().map(worker -> {
+            // 이 알바생의 이번 달 정산 데이터가 이미 생성되었는지 확인
+            Optional<SalaryPayment> paymentOpt = existingPayments.stream()
+                    .filter(p -> p.getUser().getId().equals(worker.getId()))
+                    .findFirst();
+
+            return SalaryDto.MonthlyResponse.builder()
+                    .name(worker.getName())
+                    // 정산 내역이 있으면 그 금액, 없으면 아직 0원
+                    .amount(paymentOpt.map(SalaryPayment::getTotalAmount).orElse(0L))
+                    // 정산 내역 유무에 따른 상태 표시
+                    .status(paymentOpt.map(p -> p.getStatus().toString()).orElse("NOT_STARTED"))
+                    .userId(worker.getId())
+                    // 아까 동기화 성공한 유저의 accountId 사용
+                    .accountId(worker.getAccountId() != null ? Long.valueOf(worker.getAccountId()) : null)
+                    .build();
+        }).collect(Collectors.toList());
+
+        long totalAmount = existingPayments.stream().mapToLong(SalaryPayment::getTotalAmount).sum();
+
+        return Map.of(
+                "totalAmount", totalAmount,
+                "employeeCount", list.size(),
+                "payments", list
+        );
     }
 
     @Transactional(readOnly = true)
@@ -287,8 +316,15 @@ public class SalaryService {
         Store store = storeRepository.findById(storeId).orElseThrow(() -> new IllegalArgumentException("매장 정보를 찾을 수 없습니다."));
         Account targetAccount = accountRepository.findById(accountId).orElseThrow(() -> new IllegalArgumentException("계좌 정보를 찾을 수 없습니다."));
 
+        // 1. 예상 급여 및 근무 시간 계산 결과 가져오기
         SalaryDto.EstimatedResponse estimate = getEstimatedSalary(storeId, userId, year, month);
 
+        // 🌟 [핵심 추가] 근무 기록(총 시간)이 0이면 정산 중단
+        if (estimate.getTotalHours() == null || estimate.getTotalHours() <= 0) {
+            throw new IllegalStateException(String.format("%s님은 해당 월의 근무 기록이 없어 정산을 진행할 수 없습니다.", worker.getName()));
+        }
+
+        // 2. 기록이 있는 경우에만 아래 로직 실행
         SalaryPayment newPayment = SalaryPayment.builder()
                 .user(worker).store(store).account(targetAccount)
                 .totalAmount(estimate.getAmount()).totalHours(estimate.getTotalHours())
@@ -297,10 +333,10 @@ public class SalaryService {
                 .status(PaymentStatus.WAITING).build();
 
         targetAccount.deposit(estimate.getAmount());
-        newPayment.completePayment();
+        newPayment.completePayment(); // 상태를 COMPLETED로 변경
         salaryPaymentRepository.save(newPayment);
 
-        // [추가] 알림 발송
+        // 알림 발송
         notificationService.send(
                 worker,
                 NotificationType.PAYMENT,
@@ -310,7 +346,9 @@ public class SalaryService {
 
         String displayAccount;
         try { displayAccount = aesUtil.decrypt(targetAccount.getAccountNumber()); } catch (Exception e) { displayAccount = targetAccount.getAccountNumber(); }
-        return String.format("[%s] %s님께 %d원 정산 완료! (계좌: %s, 잔액: %d원)", store.getName(), worker.getName(), estimate.getAmount(), displayAccount, targetAccount.getBalance());
+
+        return String.format("[%s] %s님께 %d원 정산 완료! (계좌: %s, 잔액: %d원)",
+                store.getName(), worker.getName(), estimate.getAmount(), displayAccount, targetAccount.getBalance());
     }
 
     // [추가] 명세서 데이터 미리보기 메서드

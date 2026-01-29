@@ -53,6 +53,7 @@ public class ManualService {
     }
 
     // 수정
+    @Transactional
     public void updateManual(Long manualId, ManualRequest request) {
         Manual manual = manualRepository.findById(manualId)
                 .orElseThrow(() -> new IllegalArgumentException("매뉴얼을 찾을 수 없습니다."));

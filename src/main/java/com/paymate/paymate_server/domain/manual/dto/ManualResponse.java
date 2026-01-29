@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 
 @Getter
 public class ManualResponse {
-    private Long id;
+    private Long manualId;
     private Long storeId;
     private String title;
     private String content;
@@ -16,7 +16,7 @@ public class ManualResponse {
     private LocalDateTime updatedAt;
 
     public ManualResponse(Manual manual) {
-        this.id = manual.getId();
+        this.manualId = manual.getId();
         this.storeId = manual.getStore().getId();
         this.title = manual.getTitle();
         this.content = manual.getContent();

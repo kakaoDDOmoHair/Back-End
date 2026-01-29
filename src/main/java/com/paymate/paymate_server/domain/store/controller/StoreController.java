@@ -15,9 +15,12 @@ public class StoreController {
 
     // 1. 매장 최종 등록 API
     @PostMapping
-    public ResponseEntity<String> registerStore(@RequestBody StoreRequest request) {
+    public ResponseEntity<StoreResponse> registerStore(@RequestBody StoreRequest request) { // 👈 상자를 StoreResponse로 교체
         Long storeId = storeService.createStore(request);
-        return ResponseEntity.ok("매장 등록 성공! ID: " + storeId);
+        StoreResponse response = storeService.getStoreDetail(storeId);
+
+        // 이제 타입이 딱 맞아서 빌드가 성공합니다!
+        return ResponseEntity.ok(response);
     }
 
     // 2. 매장 상세 조회 API

@@ -20,7 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.UUID; // 👈 [추가] 랜덤 코드 생성을 위해 필요
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -33,7 +33,9 @@ public class StoreService {
     private final AccountRepository accountRepository;
     private final AesUtil aesUtil;
 
-    // 1. 매장 생성 (계좌 자동 생성 포함 + 초대코드 자동 생성)
+    /**
+     * 1. 매장 생성 (사장님 연결 로직 추가)
+     */
     public Long createStore(StoreRequest request) {
         // 1-1. 사용자 검증
         User owner = memberRepository.findById(request.getUserId())
@@ -44,10 +46,10 @@ public class StoreService {
             throw new IllegalArgumentException("계좌 실명 인증이 완료되지 않았습니다. 인증 후 다시 시도해주세요.");
         }
 
-        // 💡 [수정됨] 초대 코드 중복 방지를 위한 랜덤 생성 로직 (8자리 대문자)
+        // 초대 코드 랜덤 생성 (8자리)
         String uniqueInviteCode = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
 
-        // 1-3. 매장 정보 저장
+        // 1-3. 매장 정보 생성
         Store store = Store.builder()
                 .owner(owner)
                 .name(request.getStoreName())
@@ -64,63 +66,35 @@ public class StoreService {
                 .payRule(request.getPayRule())
                 .bankName(request.getBankName())
                 .accountNumber(request.getAccountNumber())
-                .inviteCode(uniqueInviteCode) // 👈 [변경] 여기서 랜덤 코드가 들어갑니다!
+                .inviteCode(uniqueInviteCode)
                 .build();
 
-        storeRepository.save(store); // 매장 저장 완료
+        storeRepository.save(store);
 
-        // ==========================================================
-        // ▼ 입력받은 계좌 정보를 Account 테이블에 자동 저장
-        // ==========================================================
+        // 🌟 [추가 포인트 1] 사장님 유저 엔티티에 생성된 매장 연결
+        // 이 로직이 있어야 DB의 users 테이블 store_id 컬럼에 값이 들어갑니다.
+        owner.assignStore(store);
+
+        // 계좌 정보 자동 저장
         try {
-            // (1) 계좌번호 암호화 (보안 필수!)
             String encryptedAccountNumber = aesUtil.encrypt(request.getAccountNumber());
-
-            // (2) Account 엔티티 생성
             Account account = Account.builder()
-                    .bankName(request.getBankName())       // 요청받은 은행명
-                    .accountNumber(encryptedAccountNumber) // 암호화된 계좌번호
-                    .balance(0L)                           // 초기 잔액 0원
-                    .user(owner)                           // 현재 사장님과 연결
+                    .bankName(request.getBankName())
+                    .accountNumber(encryptedAccountNumber)
+                    .balance(0L)
+                    .user(owner)
                     .build();
-
-            // (3) DB 저장
             accountRepository.save(account);
-
         } catch (Exception e) {
-            // 암호화 실패 시 예외 처리 (트랜잭션 롤백됨)
-            throw new RuntimeException("계좌번호 암호화 및 저장 중 오류가 발생했습니다.", e);
+            throw new RuntimeException("계좌번호 암호화 중 오류가 발생했습니다.", e);
         }
-        // ==========================================================
 
         return store.getId();
     }
 
-    // 2. 매장 상세 조회
-    @Transactional(readOnly = true)
-    public StoreResponse getStoreDetail(Long storeId) {
-        Store store = storeRepository.findById(storeId)
-                .orElseThrow(() -> new IllegalArgumentException("해당 매장이 없습니다."));
-
-        return new StoreResponse(store);
-    }
-
-    // 3. 사업자 번호 유효성 검사 (Mock)
-    public CheckBusinessResponse validateBusinessNumber(String businessNumber) {
-        if (businessNumber != null && businessNumber.replace("-", "").length() == 10) {
-            return new CheckBusinessResponse(true, "ACTIVE");
-        } else {
-            return new CheckBusinessResponse(false, "UNKNOWN");
-        }
-    }
-
-    // 4. 대시보드 통계 조회 (Mock)
-    public DashboardResponse getStoreDashboard(Long storeId) {
-        // 실제 로직이 구현되기 전이므로 Mock 데이터 반환
-        return new DashboardResponse(4250000L, 5.2, "2026-01-05");
-    }
-
-    // 5. 알바생 매장 가입 (초대코드 입력)
+    /**
+     * 5. 알바생 매장 가입 (알바생 연결 로직 추가)
+     */
     public Long joinStore(JoinRequest request) {
         User employee = memberRepository.findById(request.getUserId())
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사용자입니다."));
@@ -141,6 +115,28 @@ public class StoreService {
 
         employmentRepository.save(employment);
 
+        // 🌟 [추가 포인트 2] 알바생 유저 엔티티에 가입한 매장 연결
+        // 이제 알바생이 /api/v1/users/me 호출 시 storeId를 정상적으로 반환합니다.
+        employee.assignStore(store);
+
         return store.getId();
+    }
+
+    @Transactional(readOnly = true)
+    public StoreResponse getStoreDetail(Long storeId) {
+        Store store = storeRepository.findById(storeId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 매장이 없습니다."));
+        return new StoreResponse(store);
+    }
+
+    public CheckBusinessResponse validateBusinessNumber(String businessNumber) {
+        if (businessNumber != null && businessNumber.replace("-", "").length() == 10) {
+            return new CheckBusinessResponse(true, "ACTIVE");
+        }
+        return new CheckBusinessResponse(false, "UNKNOWN");
+    }
+
+    public DashboardResponse getStoreDashboard(Long storeId) {
+        return new DashboardResponse(4250000L, 5.2, "2026-01-05");
     }
 }

@@ -49,10 +49,11 @@ public class SecurityConfig {
 
                         .requestMatchers("/api/v1/verification/**").permitAll()
                         .requestMatchers("/api/v1/schedules/**").permitAll()
+                        .requestMatchers("/api/v1/attendances/**").permitAll()
                         .requestMatchers("/api/v1/salary/**").permitAll()
-
+                        .requestMatchers("/api/v1/todos/**").permitAll()
                         // [인증 필요]
-                        .requestMatchers("/api/v1/modifications/**").authenticated()
+                        .requestMatchers("/api/v1/modifications/**").permitAll()
                         .anyRequest().authenticated()
                 )
 

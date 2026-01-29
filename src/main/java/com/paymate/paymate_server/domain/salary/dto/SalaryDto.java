@@ -46,6 +46,8 @@ public class SalaryDto {
         private String name;
         private Long amount;
         private String status;
+        private Long accountId;
+        private Long userId;
     }
 
     @Getter

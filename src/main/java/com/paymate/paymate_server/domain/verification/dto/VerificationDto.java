@@ -19,8 +19,10 @@ public class VerificationDto {
         private Long userId;
     }
 
+    @Setter
     @Getter
     @Builder
+    @NoArgsConstructor
     @AllArgsConstructor
     public static class Response {
         private boolean success;           // 성공 여부
@@ -30,5 +32,6 @@ public class VerificationDto {
 
         private String bankName;           // 인증된 은행명
         private String ownerName;          // 인증된 예금주명
+        private Long userId;
     }
 }
