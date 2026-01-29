@@ -10,6 +10,7 @@ import com.paymate.paymate_server.domain.member.repository.MemberRepository;
 import com.paymate.paymate_server.domain.store.entity.Store;
 import com.paymate.paymate_server.domain.store.repository.StoreRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -22,10 +23,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -100,7 +100,7 @@ public class ContractService {
         if (request.getStatus() != null) contract.setStatus(request.getStatus());
     }
 
-    // 5. OCR 스캔 (실제 파일 저장 + 랜덤 결과 반환)
+    // 5. OCR 스캔 (가상 데이터 반환 - 테스트용)
     public Map<String, Object> scanContract(MultipartFile file, Long storeId) throws IOException {
         // 1. 저장할 디렉토리 생성
         Path uploadPath = Paths.get(uploadDir);
@@ -117,23 +117,34 @@ public class ContractService {
         file.transferTo(filePath.toFile());
 
         // 4. 접근 가능한 URL 생성
-        // 안드로이드 에뮬레이터에서 localhost 접근 시 10.0.2.2 사용
         String fileUrl = "http://10.0.2.2:8080/uploads/" + savedFileName;
 
-        // 5. OCR 결과 시뮬레이션 (랜덤 데이터 생성하여 중복 방지)
-        Map<String, Object> result = new HashMap<>();
-        result.put("status", "success");
-        result.put("fileUrl", fileUrl); // 저장된 실제 이미지 URL 반환
-
+        // 5. 가상 OCR 결과 생성 (테스트용)
         Map<String, Object> ocrResult = new HashMap<>();
-        int randomNum = (int) (Math.random() * 1000); // 0~999 랜덤 숫자
-        ocrResult.put("workerName", "김알바_" + randomNum);
-        ocrResult.put("wage", 9860 + (randomNum * 10)); // 시급도 랜덤하게 변동
-        ocrResult.put("startDate", "2026-02-01");
+        ocrResult.put("workerName", "김민수");
+        ocrResult.put("wage", 9860);
+        ocrResult.put("startDate", "2026-02-01");  // 프론트 필드명에 맞춤
+        ocrResult.put("endDate", "2026-12-31");
+        ocrResult.put("workHours", "09:00-18:00");
 
+        // 매장 정보 조회
+        Store store = storeRepository.findById(storeId).orElse(null);
+        if (store != null) {
+            ocrResult.put("storeName", store.getName());
+        } else {
+            ocrResult.put("storeName", "페이메이트 카페");
+        }
+
+        // 계약 상태는 OCR 직후이므로 DRAFT
+        ocrResult.put("status", ContractStatus.DRAFT.name());
+
+        // 6. 결과 반환
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("fileUrl", fileUrl);
         result.put("ocrResult", ocrResult);
 
-        System.out.println("✅ 파일 업로드 완료: " + filePath.toString());
+        log.info("✅ 계약서 스캔 완료 (가상 데이터): {}", ocrResult);
         return result;
     }
 
