@@ -16,7 +16,9 @@ import com.paymate.paymate_server.domain.salary.dto.SalaryDto;
 import com.paymate.paymate_server.domain.salary.entity.SalaryPayment;
 import com.paymate.paymate_server.domain.salary.enums.PaymentStatus;
 import com.paymate.paymate_server.domain.salary.repository.SalaryPaymentRepository;
+import com.paymate.paymate_server.domain.store.entity.Employment;
 import com.paymate.paymate_server.domain.store.entity.Store;
+import com.paymate.paymate_server.domain.store.repository.EmploymentRepository;
 import com.paymate.paymate_server.domain.store.repository.StoreRepository;
 import com.paymate.paymate_server.global.util.AesUtil;
 import jakarta.mail.internet.MimeMessage;
@@ -65,6 +67,7 @@ public class SalaryService {
     private final AttendanceRepository attendanceRepository;
     private final MemberRepository memberRepository;
     private final StoreRepository storeRepository;
+    private final EmploymentRepository employmentRepository;
     private final AesUtil aesUtil;
     private final AccountRepository accountRepository;
 
@@ -332,9 +335,16 @@ public class SalaryService {
         User user = memberRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
         
+        // 알바생도 Employment를 통해 매장을 찾을 수 있어야 함 (user.getStore()는 사장님 케이스에만 있음)
         Store store = user.getStore();
         if (store == null) {
-            throw new IllegalArgumentException("알바생이 소속된 매장이 없습니다.");
+            Optional<Employment> employment = employmentRepository.findByEmployee_Id(user.getId());
+            if (employment.isPresent()) {
+                store = employment.get().getStore();
+            }
+        }
+        if (store == null) {
+            throw new IllegalArgumentException("소속된 매장이 없습니다.");
         }
 
         LocalDate periodStart = LocalDate.of(year, month, 1);
