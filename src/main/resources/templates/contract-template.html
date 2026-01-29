@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>근로계약서</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+            margin: 40px;
+            color: #222;
+            background-color: #f9fafb;
+        }
+        .wrapper {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+            padding: 40px 48px;
+            box-sizing: border-box;
+        }
+        .title {
+            text-align: center;
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            margin-bottom: 32px;
+            color: #111827;
+        }
+        .meta {
+            text-align: right;
+            font-size: 13px;
+            color: #6b7280;
+            margin-bottom: 16px;
+        }
+        .section-title {
+            font-size: 16px;
+            font-weight: 700;
+            margin: 24px 0 12px;
+            color: #111827;
+        }
+        table.info-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        table.info-table th,
+        table.info-table td {
+            border: 1px solid #e5e7eb;
+            padding: 10px 12px;
+            text-align: left;
+        }
+        table.info-table th {
+            width: 28%;
+            background-color: #f9fafb;
+            font-weight: 600;
+            color: #374151;
+        }
+        table.info-table td {
+            color: #111827;
+        }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 600;
+            background-color: #eef2ff;
+            color: #4f46e5;
+            vertical-align: middle;
+        }
+        .note {
+            margin-top: 24px;
+            padding: 12px 14px;
+            border-radius: 8px;
+            background-color: #f3f4f6;
+            font-size: 12px;
+            color: #6b7280;
+        }
+        .sign-section {
+            margin-top: 40px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+        }
+        .sign-box {
+            width: 48%;
+            padding: 16px 18px;
+            border-radius: 10px;
+            border: 1px dashed #d1d5db;
+            background-color: #f9fafb;
+        }
+        .sign-label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #111827;
+        }
+        .sign-line {
+            margin-top: 16px;
+            border-top: 1px solid #9ca3af;
+            height: 1px;
+        }
+        .footer {
+            margin-top: 32px;
+            text-align: center;
+            font-size: 11px;
+            color: #9ca3af;
+        }
+    </style>
+</head>
+<body>
+<div class="wrapper">
+    <div class="meta">
+        계약서 번호: <span th:text="${contractId}">1</span><br/>
+        발급일자: <span th:text="${issuedDate}">2026-01-01</span>
+    </div>
+
+    <h1 class="title">근로계약서</h1>
+
+    <h2 class="section-title">1. 기본 정보</h2>
+    <table class="info-table">
+        <tr>
+            <th>근로자 이름</th>
+            <td th:text="${workerName}">홍길동</td>
+        </tr>
+        <tr>
+            <th>근무 매장</th>
+            <td th:text="${storeName}">페이메이트 카페 강남점</td>
+        </tr>
+        <tr>
+            <th>시급</th>
+            <td>
+                <span th:text="${#numbers.formatInteger(wage, 0, 'COMMA')}">9,860</span> 원
+            </td>
+        </tr>
+        <tr>
+            <th>근로계약 기간</th>
+            <td>
+                <span th:text="${startDate}">2026-02-01</span>
+                &nbsp;~&nbsp;
+                <span th:text="${endDate}">2026-12-31</span>
+            </td>
+        </tr>
+        <tr>
+            <th>계약 상태</th>
+            <td>
+                <span class="badge" th:text="${statusLabel}">계약 중</span>
+            </td>
+        </tr>
+    </table>
+
+    <h2 class="section-title">2. 주요 약정 사항</h2>
+    <div style="font-size: 13px; color: #4b5563; line-height: 1.7;">
+        <p>① 근로자는 상기 매장에서 정해진 시급 및 근무 조건에 따라 성실히 근로를 제공한다.</p>
+        <p>② 사용자는 관련 법령에 따라 임금 및 근로 조건을 보장하며, 급여는 회사의 정산 주기에 따라 지급한다.</p>
+        <p>③ 상세 근무 시간(출·퇴근 및 휴게 시간) 및 실제 급여 정산 내역은
+            <strong>출퇴근 기록 및 급여 정산 화면</strong>에서 별도로 확인할 수 있다.</p>
+        <p>④ 본 계약서에 명시되지 않은 사항은 근로기준법 및 관련 법령을 따른다.</p>
+    </div>
+
+    <div class="sign-section">
+        <div class="sign-box">
+            <div class="sign-label">사용자 (매장)</div>
+            <div>매장명: <span th:text="${storeName}">페이메이트 카페 강남점</span></div>
+            <div class="sign-line"></div>
+        </div>
+        <div class="sign-box">
+            <div class="sign-label">근로자</div>
+            <div>성명: <span th:text="${workerName}">홍길동</span></div>
+            <div class="sign-line"></div>
+        </div>
+    </div>
+
+    <div class="note">
+        ※ 본 근로계약서는 전자 방식으로 작성되었으며, 서비스 내 계약서 열람 화면에서 언제든지 확인할 수 있습니다.
+    </div>
+
+    <div class="footer">
+        © PayMate - 근로계약 관리 서비스
+    </div>
+</div>
+</body>
+</html>
+
