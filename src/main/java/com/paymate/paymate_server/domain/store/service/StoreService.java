@@ -62,6 +62,8 @@ public class StoreService {
                 .category(request.getCategory())
                 .storePhone(request.getStorePhone())
                 .wifiInfo(request.getWifiInfo())
+                .latitude(request.getLatitude())
+                .longitude(request.getLongitude())
                 .payDay(request.getPayDay())
                 .payRule(request.getPayRule())
                 .bankName(request.getBankName())
