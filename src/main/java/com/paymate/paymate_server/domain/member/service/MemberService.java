@@ -1,15 +1,21 @@
 package com.paymate.paymate_server.domain.member.service;
 
 import com.paymate.paymate_server.domain.member.entity.User;
+import com.paymate.paymate_server.domain.member.repository.AccountRepository;
 import com.paymate.paymate_server.domain.member.repository.MemberRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import com.paymate.paymate_server.domain.store.entity.Employment;
+import com.paymate.paymate_server.domain.store.repository.EmploymentRepository;
 import com.paymate.paymate_server.domain.member.dto.MemberResponseDto;
 import com.paymate.paymate_server.domain.member.dto.PasswordChangeRequestDto;
 import com.paymate.paymate_server.domain.member.dto.MemberDetailResponseDto;
 import com.paymate.paymate_server.domain.member.dto.WithdrawRequestDto;
+import com.paymate.paymate_server.domain.member.entity.Account;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Optional; // 🌟 [필수] 이게 빠져있었습니다!
 
 @Service
 @RequiredArgsConstructor
@@ -18,9 +24,11 @@ public class MemberService {
 
     private final MemberRepository memberRepository;
     private final PasswordEncoder passwordEncoder;
+    private final EmploymentRepository employmentRepository;
+    private final AccountRepository accountRepository;
 
     /**
-     * 회원가입 로직 (아이디 & 이메일 중복체크 포함)
+     * 회원가입 로직
      */
     @Transactional
     public Long join(User user) {
@@ -35,32 +43,46 @@ public class MemberService {
         memberRepository.findByEmail(user.getEmail())
                 .ifPresent(m -> { throw new IllegalStateException("이미 존재하는 이메일입니다."); });
 
-        // [필수] 아이디 중복 체크
         if (memberRepository.existsByUsername(user.getUsername())) {
             throw new IllegalStateException("이미 존재하는 아이디입니다.");
         }
     }
 
     /**
-     * [변경] 내 정보 조회 (Email -> Username)
+     * 내 정보 조회 (알바생 storeId 로직 포함)
      */
-    @Transactional(readOnly = true)
-    public MemberResponseDto getMyInfo(String username) { // 📍 인자 이름 변경
-        // 📍 findByEmail -> findByUsername
+    public MemberResponseDto getMyInfo(String username) {
+        // 1. 유저 조회
         User user = memberRepository.findByUsername(username)
-                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다: " + username));
-        return MemberResponseDto.of(user);
+                .orElseThrow(() -> new IllegalArgumentException("사용자 없음"));
+
+        // 2. storeId 찾기 로직 (사장님 vs 알바생)
+        Long storeId = null;
+        if (user.getStore() != null) {
+            storeId = user.getStore().getId();
+        } else {
+            Optional<Employment> employment = employmentRepository.findByEmployee_Id(user.getId());
+            if (employment.isPresent()) {
+                storeId = employment.get().getStore().getId();
+            }
+        }
+
+        // 🌟 3. [추가] accountId(계좌 ID) 찾기 로직
+        // ID가 가장 높은(가장 최근 등록된) 계좌 하나만 가져옵니다.
+        Long accountId = accountRepository.findFirstByUserOrderByIdDesc(user)
+                .map(Account::getId)
+                .orElse(null);
+
+        // 4. DTO 생성 (storeId와 accountId를 같이 넘김)
+        // 💡 MemberResponseDto.of 메서드에도 accountId 인자를 추가해야 합니다!
+        return MemberResponseDto.of(user, storeId, accountId);
     }
 
     /**
-     * [변경] 회원 탈퇴 (Email -> Username)
+     * 회원 탈퇴
      */
     @Transactional
     public void withdraw(WithdrawRequestDto dto) {
-        // DTO 안에도 email 대신 username이 들어있어야 합니다!
-        // (만약 DTO를 아직 안 고쳤다면, 컨트롤러에서 넘겨준 username을 바로 쓰셔도 됩니다)
-
-        // 📍 findByEmail -> findByUsername
         User user = memberRepository.findByUsername(dto.getUsername())
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
 
@@ -71,11 +93,10 @@ public class MemberService {
     }
 
     /**
-     * [변경] 비밀번호 변경 (Email -> Username)
+     * 비밀번호 변경
      */
     @Transactional
     public void changePassword(PasswordChangeRequestDto dto) {
-        // 📍 findByEmail -> findByUsername
         User user = memberRepository.findByUsername(dto.getUsername())
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
 
@@ -88,23 +109,24 @@ public class MemberService {
     }
 
     /**
-     * [변경] 알바생 상세 정보 조회
+     * 알바생 상세 정보 조회
      */
     @Transactional(readOnly = true)
-    public MemberDetailResponseDto getMemberDetail(String username) { // 📍 Email -> Username
-        // 📍 findByEmail -> findByUsername
+    public MemberDetailResponseDto getMemberDetail(String username) {
         User user = memberRepository.findByUsername(username)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다: " + username));
 
         return MemberDetailResponseDto.of(user);
     }
 
-    // 👇 [추가] 이메일로 유저를 찾아서 토큰 저장
+    /**
+     * FCM 토큰 업데이트 (수정됨: username 기반)
+     */
     @Transactional
-    public void updateFcmToken(String email, String token) {
-        // 이메일로 유저 조회 (MemberRepository에 findByEmail이 있다고 가정)
-        User user = memberRepository.findByEmail(email)
-                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다: " + email));
+    public void updateFcmToken(String username, String token) { // 📍 email -> username 변경
+        // 컨트롤러에서 userDetails.getUsername()을 넘겨주므로 여기서도 username으로 찾아야 정확합니다.
+        User user = memberRepository.findByUsername(username)
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다: " + username));
 
         user.updateFcmToken(token);
     }

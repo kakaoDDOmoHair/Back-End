@@ -16,6 +16,7 @@ public class StoreResponse {
     private String wifi;
     private String payday;
     private String account;
+    private String inviteCode;
 
     public StoreResponse(Store store) {
         this.storeId = store.getId();
@@ -32,5 +33,6 @@ public class StoreResponse {
         this.wifi = store.getWifiInfo();
         this.payday = "매월 " + store.getPayDay() + "일";
         this.account = store.getBankName() + " " + store.getAccountNumber();
+        this.inviteCode = store.getInviteCode();
     }
 }

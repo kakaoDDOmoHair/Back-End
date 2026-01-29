@@ -2,9 +2,13 @@ package com.paymate.paymate_server.domain.schedule.controller;
 
 import com.paymate.paymate_server.domain.schedule.dto.ScheduleDto;
 import com.paymate.paymate_server.domain.schedule.service.ScheduleService;
+import com.paymate.paymate_server.domain.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import com.paymate.paymate_server.domain.member.entity.User;
+import io.swagger.v3.oas.annotations.Operation;
+
 
 import java.time.LocalDate;
 import java.util.HashMap;
@@ -17,6 +21,7 @@ import java.util.Map;
 public class ScheduleController {
 
     private final ScheduleService scheduleService;
+    private final MemberRepository memberRepository;
 
     // 1. 알바생 근무 스케줄 등록
     @PostMapping
@@ -46,13 +51,19 @@ public class ScheduleController {
     // 6. 내 근무 시간표 조회 (알바생용)
     @GetMapping("/my-weekly")
     public ResponseEntity<List<ScheduleDto.MyWeeklyResponse>> getMyWeeklySchedule(
-            // TODO: 실제로는 토큰에서 User ID를 꺼내야 하지만, 임시로 1번 유저 사용 or 파라미터 필요
-            // 명세서에 userId 파라미터가 없어서 토큰에서 꺼내는게 맞지만,
-            // 테스트를 위해 임시로 Parameter나 하드코딩이 필요할 수 있습니다.
-            // 여기서는 SecurityContextHolder를 쓰거나, 편의상 파라미터를 추가하겠습니다.
-            @RequestParam(required = false, defaultValue = "1") Long userId,
-            @RequestParam LocalDate startDate) {
-        return ResponseEntity.ok(scheduleService.getMyWeeklySchedule(userId, startDate));
+            @RequestParam String username,      // 1. 유저 찾기용
+            @RequestParam(required = false) LocalDate startDate // 🌟 2. [추가] 에러 해결을 위해 추가!
+    ) {
+        User user = memberRepository.findByUsername(username)
+                .orElseThrow(() -> new IllegalArgumentException("사용자 없음"));
+
+        // 만약 프론트에서 startDate를 안 보내면 오늘 날짜로 채워 넣기 (Null 방지)
+        if (startDate == null) {
+            startDate = LocalDate.now();
+        }
+
+        // 🌟 [수정] 인자 2개를 꽉 채워서 보냅니다. (user.getId(), startDate)
+        return ResponseEntity.ok(scheduleService.getMyWeeklySchedule(user.getId(), startDate));
     }
 
     // 7. 근무 스케줄 직접 수정 (사장님)

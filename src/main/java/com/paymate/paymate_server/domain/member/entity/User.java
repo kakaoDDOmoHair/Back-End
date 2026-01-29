@@ -2,6 +2,7 @@ package com.paymate.paymate_server.domain.member.entity;
 
 import com.paymate.paymate_server.domain.member.enums.UserRole;
 import com.paymate.paymate_server.domain.member.enums.UserStatus;
+import com.paymate.paymate_server.domain.store.entity.Store;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -26,6 +27,9 @@ public class User {
     // unique = true: 아이디는 중복될 수 없음
     @Column(nullable = false, unique = true, length = 30)
     private String username;
+
+    @Column(name = "account_id", nullable = true)
+    private String accountId; //
 
     // 이메일은 이제 '로그인용'이 아니라 '연락처/알림용'으로 사용
     @Column(nullable = false, length = 100)
@@ -68,6 +72,10 @@ public class User {
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "store_id") // DB의 users 테이블에 store_id 컬럼이 생깁니다.
+    private com.paymate.paymate_server.domain.store.entity.Store store;
+
     public void updatePassword(String encodedPassword) {
         this.password = encodedPassword;
     }
@@ -75,7 +83,16 @@ public class User {
     public void updateStatus(UserStatus status) {
         this.status = status;
     }
+    public void assignStore(Store store) {
+        this.store = store;
+    }
 
+
+    public void updateAccountInfo(Account account) {
+        this.accountId = String.valueOf(account.getId());
+        this.accountNumber = account.getAccountNumber();
+        this.bankName = account.getBankName();
+    }
     // FCM 토큰 필드
     private String fcmToken;
 

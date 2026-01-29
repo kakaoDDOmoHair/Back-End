@@ -83,7 +83,6 @@ public class MemberController {
 
     /**
      * 내 정보 조회 (GET /me)
-     * - (임시) 아직 토큰 로직이 없으므로 1번 유저로 고정해둠
      */
     @GetMapping("/me")
     public ResponseEntity<MemberResponseDto> getMyInfo(@RequestParam String username) { // 📍 파라미터 변경

@@ -3,7 +3,9 @@ package com.paymate.paymate_server.domain.member.repository;
 import com.paymate.paymate_server.domain.member.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
+import com.paymate.paymate_server.domain.member.enums.UserRole;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -17,4 +19,6 @@ public interface MemberRepository extends JpaRepository<User, Long> {
 
     // 3. [추가] 아이디 중복 확인용 (회원가입 시 필수)
     boolean existsByUsername(String username);
+
+    List<User> findByStoreIdAndRole(Long storeId, UserRole role);
 }

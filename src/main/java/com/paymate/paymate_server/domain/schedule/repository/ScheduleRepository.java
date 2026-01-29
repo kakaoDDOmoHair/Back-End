@@ -28,4 +28,6 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
     // ▼ [NEW] 지각 체크용 (특정 유저의 특정 날짜 스케줄 조회)
     // =================================================================
     Optional<Schedule> findByUserAndStoreAndWorkDate(User user, Store store, LocalDate workDate);
+
+    List<Schedule> findAllByUser_IdOrderByWorkDateDesc(Long userId);
 }
