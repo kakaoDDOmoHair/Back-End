@@ -22,7 +22,24 @@ public class SalaryDto {
         private Long id;
         private String month;
         private Long amount;
+        private Double totalHours; // 월 누적 근로시간
         private String status;
+    }
+
+    // 알바생용 현재 월 급여 조회 응답
+    @Getter
+    @Builder
+    @AllArgsConstructor
+    public static class CurrentMonthSalaryResponse {
+        private Long paymentId;
+        private Integer year;
+        private Integer month;
+        private Long amount;           // 최종 지급액
+        private String status;         // COMPLETED, WAITING, REQUESTED 등
+        private Long baseSalary;       // 기본급
+        private Long weeklyAllowance;  // 주휴수당
+        private Long tax;              // 세금
+        private Double totalHours;     // 총 근무 시간
     }
 
     @Getter
@@ -71,5 +88,21 @@ public class SalaryDto {
         private Long accountId;
         private int year;
         private int month;
+    }
+
+    // 정산 요청 응답 (일한 시간, 요청 금액 포함)
+    @Getter
+    @Builder
+    @AllArgsConstructor
+    public static class RequestResponse {
+        private Long paymentId;
+        private Integer year;
+        private Integer month;
+        private Long amount;           // 요청 금액
+        private Double totalHours;     // 일한 시간
+        private String status;         // REQUESTED
+        private Long baseSalary;       // 기본급
+        private Long weeklyAllowance;  // 주휴수당
+        private Long tax;              // 세금
     }
 }

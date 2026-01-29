@@ -46,17 +46,36 @@ public class SalaryController {
         ));
     }
 
-    // 4. 급여 내역 조회
+    // 4. 급여 내역 조회 (전체)
     @GetMapping("/history")
     public ResponseEntity<List<SalaryDto.HistoryResponse>> getSalaryHistory(@RequestParam Long userId) {
         return ResponseEntity.ok(salaryService.getSalaryHistory(userId));
     }
 
-    // 5. 정산 요청하기
+    // 4-1. 알바생용 현재 월 급여 조회
+    @GetMapping("/current")
+    public ResponseEntity<SalaryDto.CurrentMonthSalaryResponse> getCurrentMonthSalary(
+            @RequestParam Long userId,
+            @RequestParam int year,
+            @RequestParam int month) {
+        return ResponseEntity.ok(salaryService.getCurrentMonthSalary(userId, year, month));
+    }
+
+    // 5. 정산 요청하기 (paymentId가 없어도 가능 - 사장님이 정산하기 전에도 요청 가능)
     @PostMapping("/request")
-    public ResponseEntity<Map<String, String>> requestPayment(@RequestBody Map<String, Long> body) {
-        salaryService.requestPayment(body.get("paymentId"));
-        return ResponseEntity.ok(Map.of("status", "success", "message", "요청이 전송되었습니다."));
+    public ResponseEntity<Map<String, Object>> requestPayment(@RequestBody Map<String, Object> body) {
+        Long paymentId = body.get("paymentId") != null ? Long.valueOf(body.get("paymentId").toString()) : null;
+        Long userId = body.get("userId") != null ? Long.valueOf(body.get("userId").toString()) : null;
+        Long storeId = body.get("storeId") != null ? Long.valueOf(body.get("storeId").toString()) : null;
+        Integer year = body.get("year") != null ? Integer.valueOf(body.get("year").toString()) : null;
+        Integer month = body.get("month") != null ? Integer.valueOf(body.get("month").toString()) : null;
+        
+        SalaryDto.RequestResponse response = salaryService.requestPayment(paymentId, userId, storeId, year, month);
+        return ResponseEntity.ok(Map.of(
+                "status", "success",
+                "message", "요청이 전송되었습니다.",
+                "data", response
+        ));
     }
 
     // 6. 예상 급여 조회 (상세 내역 포함됨)
