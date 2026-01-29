@@ -44,18 +44,21 @@ public class ContractController {
         return ResponseEntity.ok(contractService.getContractList(storeId, userId, status, pageable));
     }
 
-    // 4. 계약서 스캔 (OCR Mock)
-    @PostMapping("/scan")
-    public ResponseEntity<Map<String, Object>> scanContract() {
-        // 실제로는 MultipartFile을 받아야 하지만, Mock 테스트를 위해 생략
-        return ResponseEntity.ok(contractService.mockOcrScan());
+    // 4. 계약서 스캔 (파일 업로드 + 가상 OCR)
+    // 🌟 [수정됨] MultipartFile을 받도록 변경
+    @PostMapping(value = "/scan", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, Object>> scanContract(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("storeId") Long storeId
+    ) throws IOException {
+        return ResponseEntity.ok(contractService.scanContract(file, storeId));
     }
 
-    // 5. 계약서 다운로드 (Mock)
+    // 5. 계약서 다운로드
     @GetMapping("/{contractId}/download")
     public ResponseEntity<String> downloadContract(@PathVariable Long contractId) {
-        // 실제로는 PDF 파일 스트림을 반환해야 함
-        return ResponseEntity.ok("https://mock-s3-bucket.com/contracts/" + contractId + ".pdf");
+        // 실제 저장된 파일 경로 혹은 예시 경로 반환
+        return ResponseEntity.ok(contractService.getDownloadUrl(contractId));
     }
 
     // 6. 계약 정보 수정 (PATCH) - 명세서 반영 완료
