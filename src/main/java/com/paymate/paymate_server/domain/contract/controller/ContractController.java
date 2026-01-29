@@ -36,6 +36,13 @@ public class ContractController {
         return ResponseEntity.ok(contractService.getContractDetail(contractId));
     }
 
+    // 2-1. 근로계약서 미리보기 (HTML)
+    @GetMapping(value = "/{contractId}/preview", produces = "text/html; charset=utf-8")
+    public ResponseEntity<String> getContractPreview(@PathVariable Long contractId) {
+        String html = contractService.getContractHtmlPreview(contractId);
+        return ResponseEntity.ok(html);
+    }
+
     // 3. 계약서 목록 조회 (Query Param 방식: ?storeId=1 또는 ?userId=1)
     @GetMapping
     public ResponseEntity<Page<ContractResponse>> getContractList(
@@ -47,14 +54,14 @@ public class ContractController {
         return ResponseEntity.ok(contractService.getContractList(storeId, userId, status, pageable));
     }
 
-    // 4. 계약서 스캔 (파일 업로드 + 가상 OCR)
-    // 🌟 [수정됨] MultipartFile을 받도록 변경
+    // 4. 계약서 스캔 (파일 업로드 + 가상 OCR + 계약서 생성)
     @PostMapping(value = "/scan", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Map<String, Object>> scanContract(
             @RequestParam("file") MultipartFile file,
-            @RequestParam("storeId") Long storeId
+            @RequestParam("storeId") Long storeId,
+            @RequestParam("userId") Long userId
     ) throws IOException {
-        return ResponseEntity.ok(contractService.scanContract(file, storeId));
+        return ResponseEntity.ok(contractService.scanContract(file, storeId, userId));
     }
 
     // 5. 계약서 다운로드
