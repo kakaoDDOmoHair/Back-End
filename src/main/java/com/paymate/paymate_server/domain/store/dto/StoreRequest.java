@@ -25,6 +25,10 @@ public class StoreRequest {
     private String storePhone;     // 매장 전화번호
     private String wifiInfo;       // 와이파이
 
+    // 위치 정보 (출근 확인용)
+    private Double latitude;      // 위도
+    private Double longitude;     // 경도
+
     // 급여 정산 정보
     private Integer payDay;        // 급여일
     private StorePayRule payRule;  // 급여 규칙

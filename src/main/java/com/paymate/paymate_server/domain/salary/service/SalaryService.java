@@ -129,9 +129,12 @@ public class SalaryService {
     public String completePayment(Long paymentId, Long accountId) {
         SalaryPayment payment = salaryPaymentRepository.findById(paymentId)
                 .orElseThrow(() -> new IllegalArgumentException("정산 내역 없음"));
+        
+        // 이미 완료된 경우 중복 처리 방지 (입금은 하지 않고 성공 메시지만 반환)
         if (payment.getStatus() == PaymentStatus.COMPLETED) {
-            throw new IllegalStateException("이미 정산 완료된 내역입니다.");
+            return String.format("[이미 완료됨] %s님의 정산이 이미 완료된 상태입니다.", payment.getUser().getName());
         }
+        
         User worker = payment.getUser();
         Account targetAccount = accountRepository.findById(accountId)
                 .orElseThrow(() -> new IllegalArgumentException("계좌 정보 없음"));
@@ -184,10 +187,88 @@ public class SalaryService {
                 .build();
     }
 
-    public void requestPayment(Long paymentId) {
-        SalaryPayment payment = salaryPaymentRepository.findById(paymentId)
-                .orElseThrow(() -> new IllegalArgumentException("정산 내역 없음"));
+    // 알바생의 정산 요청 (paymentId가 없어도 가능 - 사장님이 정산하기 전에도 요청 가능)
+    public SalaryDto.RequestResponse requestPayment(Long paymentId, Long userId, Long storeId, Integer year, Integer month) {
+        SalaryPayment payment;
+        
+        if (paymentId != null) {
+            // 기존 정산 내역이 있는 경우
+            payment = salaryPaymentRepository.findById(paymentId)
+                    .orElseThrow(() -> new IllegalArgumentException("정산 내역 없음"));
+        } else {
+            // 정산 내역이 없는 경우 (사장님이 아직 정산하지 않음)
+            // userId, storeId, year, month로 SalaryPayment 생성
+            if (userId == null || storeId == null || year == null || month == null) {
+                throw new IllegalArgumentException("정산 내역이 없을 경우 userId, storeId, year, month가 필요합니다.");
+            }
+            
+            User worker = memberRepository.findById(userId)
+                    .orElseThrow(() -> new IllegalArgumentException("알바생 정보를 찾을 수 없습니다."));
+            Store store = storeRepository.findById(storeId)
+                    .orElseThrow(() -> new IllegalArgumentException("매장 정보를 찾을 수 없습니다."));
+            
+            LocalDate periodStart = LocalDate.of(year, month, 1);
+            
+            // 이미 해당 기간의 정산 내역이 있는지 확인
+            Optional<SalaryPayment> existingPayment = salaryPaymentRepository.findByUserAndStoreAndPeriodStart(worker, store, periodStart);
+            if (existingPayment.isPresent()) {
+                payment = existingPayment.get();
+            } else {
+                // 정산 내역이 없으면 예상 급여로 생성
+                SalaryDto.EstimatedResponse estimate = getEstimatedSalary(storeId, userId, year, month);
+                
+                // 가장 최근 계좌 가져오기
+                Account account = accountRepository.findFirstByUserOrderByIdDesc(worker)
+                        .orElseThrow(() -> new IllegalArgumentException("계좌 정보가 없습니다. 계좌를 등록해주세요."));
+                
+                payment = SalaryPayment.builder()
+                        .user(worker)
+                        .store(store)
+                        .account(account)
+                        .totalAmount(estimate.getAmount())
+                        .totalHours(estimate.getTotalHours())
+                        .periodStart(periodStart)
+                        .periodEnd(periodStart.withDayOfMonth(periodStart.lengthOfMonth()))
+                        .status(PaymentStatus.WAITING)
+                        .build();
+                salaryPaymentRepository.save(payment);
+            }
+        }
+        
+        // 정산 요청 처리
         payment.requestSalary();
+        
+        // 🌟 [추가] 사장님에게 알림 발송
+        notificationService.send(
+                payment.getStore().getOwner(),
+                NotificationType.PAYMENT,
+                "급여 정산 요청",
+                String.format("%s님이 %d월 급여 정산을 요청했습니다. (금액: %d원)", 
+                        payment.getUser().getName(), 
+                        payment.getPeriodStart().getMonthValue(),
+                        payment.getTotalAmount())
+        );
+        
+        // 🌟 [추가] 상세 급여 정보 계산 (응답용)
+        SalaryDto.EstimatedResponse estimate = getEstimatedSalary(
+                payment.getStore().getId(), 
+                payment.getUser().getId(), 
+                payment.getPeriodStart().getYear(),
+                payment.getPeriodStart().getMonthValue()
+        );
+        
+        // 응답 반환 (일한 시간, 요청 금액 포함)
+        return SalaryDto.RequestResponse.builder()
+                .paymentId(payment.getId())
+                .year(payment.getPeriodStart().getYear())
+                .month(payment.getPeriodStart().getMonthValue())
+                .amount(payment.getTotalAmount())
+                .totalHours(payment.getTotalHours() != null ? payment.getTotalHours() : estimate.getTotalHours())
+                .status(payment.getStatus().toString())
+                .baseSalary(estimate.getBaseSalary())
+                .weeklyAllowance(estimate.getWeeklyAllowance())
+                .tax(estimate.getTax())
+                .build();
     }
 
     @Transactional(readOnly = true)
@@ -236,7 +317,60 @@ public class SalaryService {
         User user = memberRepository.findById(userId).orElseThrow(() -> new IllegalArgumentException("사용자 없음"));
         List<SalaryPayment> payments = salaryPaymentRepository.findAllByUserOrderByPeriodStartDesc(user);
         return payments.stream().map(p -> SalaryDto.HistoryResponse.builder()
-                .id(p.getId()).month(p.getPeriodStart().getMonthValue() + "월").amount(p.getTotalAmount()).status(p.getStatus().toString()).build()).collect(Collectors.toList());
+                .id(p.getId())
+                .month(p.getPeriodStart().getMonthValue() + "월")
+                .amount(p.getTotalAmount())
+                .totalHours(p.getTotalHours())
+                .status(p.getStatus().toString())
+                .build()
+        ).collect(Collectors.toList());
+    }
+
+    // 알바생용 현재 월 급여 조회
+    @Transactional(readOnly = true)
+    public SalaryDto.CurrentMonthSalaryResponse getCurrentMonthSalary(Long userId, int year, int month) {
+        User user = memberRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+        
+        Store store = user.getStore();
+        if (store == null) {
+            throw new IllegalArgumentException("알바생이 소속된 매장이 없습니다.");
+        }
+
+        LocalDate periodStart = LocalDate.of(year, month, 1);
+        Optional<SalaryPayment> paymentOpt = salaryPaymentRepository.findByUserAndStoreAndPeriodStart(user, store, periodStart);
+
+        // 상세 급여 정보 계산 (기본급, 주휴수당, 세금 등)
+        SalaryDto.EstimatedResponse estimate = getEstimatedSalary(store.getId(), userId, year, month);
+
+        // SalaryPayment가 있으면 그 정보 사용, 없으면 예상 급여 정보 사용
+        if (paymentOpt.isPresent()) {
+            SalaryPayment payment = paymentOpt.get();
+            return SalaryDto.CurrentMonthSalaryResponse.builder()
+                    .paymentId(payment.getId())
+                    .year(year)
+                    .month(month)
+                    .amount(payment.getTotalAmount())
+                    .status(payment.getStatus().toString())
+                    .baseSalary(estimate.getBaseSalary())
+                    .weeklyAllowance(estimate.getWeeklyAllowance())
+                    .tax(estimate.getTax())
+                    .totalHours(payment.getTotalHours() != null ? payment.getTotalHours() : estimate.getTotalHours())
+                    .build();
+        } else {
+            // 아직 정산이 안 된 경우 (예상 급여만 반환)
+            return SalaryDto.CurrentMonthSalaryResponse.builder()
+                    .paymentId(null)
+                    .year(year)
+                    .month(month)
+                    .amount(estimate.getAmount())
+                    .status("NOT_STARTED")
+                    .baseSalary(estimate.getBaseSalary())
+                    .weeklyAllowance(estimate.getWeeklyAllowance())
+                    .tax(estimate.getTax())
+                    .totalHours(estimate.getTotalHours())
+                    .build();
+        }
     }
 
     // [업그레이드] 실제 PDF 생성 및 이메일 전송 로직 적용
@@ -391,6 +525,7 @@ public class SalaryService {
         }
 
         // 2. 기록이 있는 경우에만 아래 로직 실행
+        // 🌟 [수정] WAITING 상태로 생성 (알바생이 요청할 수 있도록)
         SalaryPayment newPayment = SalaryPayment.builder()
                 .user(worker).store(store).account(targetAccount)
                 .totalAmount(estimate.getAmount()).totalHours(estimate.getTotalHours())
@@ -398,16 +533,17 @@ public class SalaryService {
                 .periodEnd(LocalDate.of(year, month, 1).withDayOfMonth(LocalDate.of(year, month, 1).lengthOfMonth()))
                 .status(PaymentStatus.WAITING).build();
 
-        targetAccount.deposit(estimate.getAmount());
-        newPayment.completePayment(); // 상태를 COMPLETED로 변경
+        // 🌟 [수정] 입금 처리는 하지 않고, WAITING 상태로 저장
+        // 알바생이 요청하면 REQUESTED로 변경되고, 
+        // 사장님이 확인 후 completePayment()를 호출하여 COMPLETED로 변경
         salaryPaymentRepository.save(newPayment);
 
-        // 알림 발송
+        // 알림 발송 (정산 내역 생성 알림)
         notificationService.send(
                 worker,
                 NotificationType.PAYMENT,
-                "급여 입금 완료 💰",
-                String.format("%d월 급여 %d원이 입금되었습니다.", month, estimate.getAmount())
+                "정산 내역 생성 완료",
+                String.format("%d월 급여 정산 내역이 생성되었습니다. 정산 요청을 보낼 수 있습니다.", month)
         );
 
         String displayAccount;

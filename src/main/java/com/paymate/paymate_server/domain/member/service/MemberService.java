@@ -4,6 +4,7 @@ import com.paymate.paymate_server.domain.member.entity.User;
 import com.paymate.paymate_server.domain.member.repository.AccountRepository;
 import com.paymate.paymate_server.domain.member.repository.MemberRepository;
 import com.paymate.paymate_server.domain.store.entity.Employment;
+import com.paymate.paymate_server.domain.store.entity.Store;
 import com.paymate.paymate_server.domain.store.repository.EmploymentRepository;
 import com.paymate.paymate_server.domain.member.dto.MemberResponseDto;
 import com.paymate.paymate_server.domain.member.dto.PasswordChangeRequestDto;
@@ -56,15 +57,29 @@ public class MemberService {
         User user = memberRepository.findByUsername(username)
                 .orElseThrow(() -> new IllegalArgumentException("사용자 없음"));
 
-        // 2. storeId 찾기 로직 (사장님 vs 알바생)
+        // 2. Store 찾기 로직 (사장님 vs 알바생)
+        Store store = null;
         Long storeId = null;
+        
+        // 사장님인 경우: user.getStore()에서 직접 가져옴
         if (user.getStore() != null) {
-            storeId = user.getStore().getId();
+            store = user.getStore();
+            storeId = store.getId();
         } else {
+            // 알바생인 경우: Employment 테이블에서 조회
             Optional<Employment> employment = employmentRepository.findByEmployee_Id(user.getId());
             if (employment.isPresent()) {
-                storeId = employment.get().getStore().getId();
+                store = employment.get().getStore();
+                storeId = store.getId();
             }
+        }
+        
+        // Store 엔티티의 lazy loading 필드들을 명시적으로 초기화
+        if (store != null) {
+            // 필드 접근으로 프록시 초기화 (Hibernate가 자동으로 처리)
+            store.getLatitude();
+            store.getLongitude();
+            store.getWifiInfo();
         }
 
         // 🌟 3. [추가] accountId(계좌 ID) 찾기 로직
@@ -73,9 +88,8 @@ public class MemberService {
                 .map(Account::getId)
                 .orElse(null);
 
-        // 4. DTO 생성 (storeId와 accountId를 같이 넘김)
-        // 💡 MemberResponseDto.of 메서드에도 accountId 인자를 추가해야 합니다!
-        return MemberResponseDto.of(user, storeId, accountId);
+        // 4. DTO 생성 (storeId, accountId, store 정보를 같이 넘김)
+        return MemberResponseDto.of(user, storeId, accountId, store);
     }
 
     /**

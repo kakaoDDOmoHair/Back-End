@@ -171,11 +171,18 @@ public class AttendanceService {
                 .orElseThrow(() -> new IllegalArgumentException("기록 없음"));
 
         LocalDate date = LocalDate.parse(request.getWorkDate());
-        LocalTime start = LocalTime.parse(request.getStartTime());
-        LocalTime end = LocalTime.parse(request.getEndTime());
+        LocalTime startTime = LocalTime.parse(request.getStartTime());
+        LocalTime endTime = LocalTime.parse(request.getEndTime());
 
-        LocalDateTime startDateTime = LocalDateTime.of(date, start);
-        LocalDateTime endDateTime = LocalDateTime.of(date, end);
+        LocalDateTime startDateTime = LocalDateTime.of(date, startTime);
+        LocalDateTime endDateTime;
+        
+        // endTime이 startTime보다 작으면 다음날로 처리 (야간 근무)
+        if (endTime.isBefore(startTime) || endTime.equals(startTime)) {
+            endDateTime = LocalDateTime.of(date.plusDays(1), endTime);
+        } else {
+            endDateTime = LocalDateTime.of(date, endTime);
+        }
 
         AttendanceStatus status = request.getStatus().equals("NORMAL") ? AttendanceStatus.OFF : AttendanceStatus.valueOf(request.getStatus());
 
@@ -242,8 +249,18 @@ public class AttendanceService {
                 .orElseThrow(() -> new IllegalArgumentException("해당 유저(ID:" + request.getUserId() + ")가 없습니다."));
 
         LocalDate date = LocalDate.parse(request.getWorkDate());
-        LocalDateTime start = LocalDateTime.of(date, LocalTime.parse(request.getStartTime()));
-        LocalDateTime end = LocalDateTime.of(date, LocalTime.parse(request.getEndTime()));
+        LocalTime startTime = LocalTime.parse(request.getStartTime());
+        LocalTime endTime = LocalTime.parse(request.getEndTime());
+        
+        LocalDateTime start = LocalDateTime.of(date, startTime);
+        LocalDateTime end;
+        
+        // endTime이 startTime보다 작으면 다음날로 처리 (야간 근무)
+        if (endTime.isBefore(startTime) || endTime.equals(startTime)) {
+            end = LocalDateTime.of(date.plusDays(1), endTime);
+        } else {
+            end = LocalDateTime.of(date, endTime);
+        }
 
         Attendance attendance = Attendance.builder()
                 .store(store)

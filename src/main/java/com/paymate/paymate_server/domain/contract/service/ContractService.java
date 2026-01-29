@@ -35,8 +35,8 @@ public class ContractService {
     private final MemberRepository memberRepository;
     private final StoreRepository storeRepository;
 
-    // application.properties에 설정된 경로 (없으면 프로젝트 루트의 uploads 폴더 사용)
-    @Value("${file.upload-dir:./uploads/}")
+    // application.properties에 설정된 경로 (기본: 컨테이너 내 /app/uploads)
+    @Value("${file.upload-dir:/app/uploads}")
     private String uploadDir;
 
     // 1. 계약서 생성
@@ -102,11 +102,9 @@ public class ContractService {
 
     // 5. OCR 스캔 (가상 데이터 반환 - 테스트용)
     public Map<String, Object> scanContract(MultipartFile file, Long storeId) throws IOException {
-        // 1. 저장할 디렉토리 생성
-        Path uploadPath = Paths.get(uploadDir);
-        if (!Files.exists(uploadPath)) {
-            Files.createDirectories(uploadPath);
-        }
+        // 1. 저장할 디렉토리 생성 (절대 경로 기준)
+        Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
+        Files.createDirectories(uploadPath); // 이미 있어도 예외 안 남
 
         // 2. 파일명 중복 방지를 위한 UUID 적용
         String originalFilename = file.getOriginalFilename();

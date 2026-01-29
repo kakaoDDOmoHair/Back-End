@@ -59,6 +59,13 @@ public class Store {
     @Column(name = "store_phone", length = 20)
     private String storePhone;
 
+    // --- 위치 정보 (출근 확인용) ---
+    @Column(name = "latitude")
+    private Double latitude; // 위도
+
+    @Column(name = "longitude")
+    private Double longitude; // 경도
+
     // --- 급여 및 정산 정보 (추가됨) ---
     @Column(name = "pay_day")
     private Integer payDay;
