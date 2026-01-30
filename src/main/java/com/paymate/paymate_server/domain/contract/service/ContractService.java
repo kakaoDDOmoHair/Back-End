@@ -164,7 +164,7 @@ public class ContractService {
         ocrResult.put("workerName", worker.getName());
 
         // 시급은 데모용으로 고정값 사용 (추후 확장 가능)
-        ocrResult.put("wage", 9860);
+        ocrResult.put("wage", 10320);
         ocrResult.put("startDate", "2026-02-01");  // 프론트 필드명에 맞춤
         ocrResult.put("endDate", "2026-12-31");
 
