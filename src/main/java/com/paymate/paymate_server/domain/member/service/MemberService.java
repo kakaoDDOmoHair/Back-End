@@ -144,4 +144,20 @@ public class MemberService {
 
         user.updateFcmToken(token);
     }
+
+    /**
+     * 생일 등록/업데이트
+     */
+    @Transactional
+    public void updateBirthDate(String username, String birthDate) {
+        // 생일 형식 검증 (6자리 숫자)
+        if (birthDate == null || !birthDate.matches("^\\d{6}$")) {
+            throw new IllegalArgumentException("생년월일은 6자리 숫자(예: 980101)로 입력해주세요.");
+        }
+
+        User user = memberRepository.findByUsername(username)
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다: " + username));
+
+        user.updateBirthDate(birthDate);
+    }
 }

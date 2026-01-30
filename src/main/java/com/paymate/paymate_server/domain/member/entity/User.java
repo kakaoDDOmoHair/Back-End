@@ -93,6 +93,12 @@ public class User {
         this.accountNumber = account.getAccountNumber();
         this.bankName = account.getBankName();
     }
+    
+    // 생일 업데이트 메서드
+    public void updateBirthDate(String birthDate) {
+        this.birthDate = birthDate;
+    }
+    
     // FCM 토큰 필드
     private String fcmToken;
 

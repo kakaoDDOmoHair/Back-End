@@ -113,4 +113,44 @@ public class MemberController {
 
         return ResponseEntity.ok("FCM 토큰 저장 완료");
     }
+
+    /**
+     * 생일 등록/업데이트 (PATCH /birth-date)
+     */
+    @PatchMapping("/birth-date")
+    public ResponseEntity<Map<String, Object>> updateBirthDate(@RequestBody Map<String, String> body) {
+        String username = body.get("username");
+        String birthDate = body.get("birthDate");
+
+        if (username == null || username.isEmpty()) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", "사용자 아이디를 입력해주세요.");
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+
+        if (birthDate == null || birthDate.isEmpty()) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", "생년월일을 입력해주세요.");
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+
+        try {
+            memberService.updateBirthDate(username, birthDate);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "생년월일이 등록되었습니다.");
+            response.put("username", username);
+            response.put("birthDate", birthDate);
+            return ResponseEntity.ok(response);
+
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
 }
