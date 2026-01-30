@@ -19,6 +19,7 @@ public class MemberResponseDto {
     private String email;
     private String name;
     private String role;
+    private String birthDate; // 생년월일 (예: "980101")
     
     // --- 매장 정보 (출근 확인용) ---
     private StoreInfo store;
@@ -63,6 +64,7 @@ public class MemberResponseDto {
                 .email(user.getEmail())
                 .name(user.getName())
                 .role(user.getRole() != null ? user.getRole().name() : null)
+                .birthDate(user.getBirthDate())
                 .store(storeInfo)
                 .build();
     }
