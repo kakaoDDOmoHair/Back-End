@@ -1,11 +1,19 @@
 package com.paymate.paymate_server.domain.member.service;
 
 import com.paymate.paymate_server.domain.member.entity.User;
+import com.paymate.paymate_server.domain.member.enums.UserRole;
 import com.paymate.paymate_server.domain.member.repository.AccountRepository;
 import com.paymate.paymate_server.domain.member.repository.MemberRepository;
 import com.paymate.paymate_server.domain.store.entity.Employment;
 import com.paymate.paymate_server.domain.store.entity.Store;
 import com.paymate.paymate_server.domain.store.repository.EmploymentRepository;
+import com.paymate.paymate_server.domain.store.repository.StoreRepository;
+import com.paymate.paymate_server.domain.attendance.repository.AttendanceRepository;
+import com.paymate.paymate_server.domain.schedule.repository.ScheduleRepository;
+import com.paymate.paymate_server.domain.contract.repository.ContractRepository;
+import com.paymate.paymate_server.domain.salary.repository.SalaryPaymentRepository;
+import com.paymate.paymate_server.domain.todo.repository.TodoRepository;
+import com.paymate.paymate_server.domain.notification.repository.NotificationRepository;
 import com.paymate.paymate_server.domain.member.dto.MemberResponseDto;
 import com.paymate.paymate_server.domain.member.dto.PasswordChangeRequestDto;
 import com.paymate.paymate_server.domain.member.dto.MemberDetailResponseDto;
@@ -16,7 +24,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional; // 🌟 [필수] 이게 빠져있었습니다!
+import org.springframework.data.domain.Pageable;
 
 @Service
 @RequiredArgsConstructor
@@ -27,6 +37,13 @@ public class MemberService {
     private final PasswordEncoder passwordEncoder;
     private final EmploymentRepository employmentRepository;
     private final AccountRepository accountRepository;
+    private final AttendanceRepository attendanceRepository;
+    private final ScheduleRepository scheduleRepository;
+    private final ContractRepository contractRepository;
+    private final SalaryPaymentRepository salaryPaymentRepository;
+    private final TodoRepository todoRepository;
+    private final NotificationRepository notificationRepository;
+    private final StoreRepository storeRepository;
 
     /**
      * 회원가입 로직
@@ -93,7 +110,7 @@ public class MemberService {
     }
 
     /**
-     * 회원 탈퇴
+     * 회원 탈퇴 (외래키 관계 정리 포함)
      */
     @Transactional
     public void withdraw(WithdrawRequestDto dto) {
@@ -103,7 +120,89 @@ public class MemberService {
         if (!passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
             throw new IllegalArgumentException("비밀번호가 일치하지 않습니다.");
         }
+
+        // 역할에 따라 다른 처리
+        if (user.getRole() == UserRole.WORKER) {
+            // 알바생 탈퇴 처리
+            withdrawWorker(user);
+        } else if (user.getRole() == UserRole.OWNER) {
+            // 사장님 탈퇴 처리
+            withdrawOwner(user);
+        }
+
+        // 최종적으로 유저 삭제
         memberRepository.delete(user);
+    }
+
+    /**
+     * 알바생 탈퇴 처리 (외래키 관계 정리)
+     */
+    private void withdrawWorker(User user) {
+        // 1. 고용 관계 삭제
+        Optional<Employment> employmentOpt = employmentRepository.findByEmployee_Id(user.getId());
+        employmentOpt.ifPresent(employmentRepository::delete);
+
+        // 2. 출퇴근 기록 삭제 (넓은 범위로 조회하여 모든 기록 삭제)
+        List<com.paymate.paymate_server.domain.attendance.entity.Attendance> attendances = 
+            attendanceRepository.findAllByUserAndCheckInTimeBetween(user, 
+                java.time.LocalDateTime.of(2000, 1, 1, 0, 0), 
+                java.time.LocalDateTime.now().plusYears(10));
+        attendanceRepository.deleteAll(attendances);
+
+        // 3. 스케줄 삭제
+        List<com.paymate.paymate_server.domain.schedule.entity.Schedule> schedules = 
+            scheduleRepository.findAllByUser_IdOrderByWorkDateDesc(user.getId());
+        scheduleRepository.deleteAll(schedules);
+
+        // 4. 근로계약서 삭제 (Pageable.unpaged()로 전체 조회)
+        List<com.paymate.paymate_server.domain.contract.entity.Contract> contracts = 
+            contractRepository.findByUserId(user.getId(), null, 
+                org.springframework.data.domain.Pageable.unpaged()).getContent();
+        contractRepository.deleteAll(contracts);
+
+        // 5. 급여 지급 내역 삭제
+        List<com.paymate.paymate_server.domain.salary.entity.SalaryPayment> salaryPayments = 
+            salaryPaymentRepository.findAllByUserOrderByPeriodStartDesc(user);
+        salaryPaymentRepository.deleteAll(salaryPayments);
+
+        // 6. 알림 삭제
+        List<com.paymate.paymate_server.domain.notification.entity.Notification> notifications = 
+            notificationRepository.findAllByUserIdOrderByCreatedAtDesc(user.getId());
+        notificationRepository.deleteAll(notifications);
+
+        // 7. User의 store_id를 null로 설정
+        user.assignStore(null);
+    }
+
+    /**
+     * 사장님 탈퇴 처리 (외래키 관계 정리)
+     */
+    private void withdrawOwner(User user) {
+        // 1. 매장 조회
+        Store store = user.getStore();
+        if (store != null) {
+            // 2. 매장에 속한 알바생들의 고용 관계 삭제
+            // Employment는 Store와 User 양쪽에 관계가 있으므로, 
+            // 매장 삭제 전에 고용 관계를 먼저 삭제해야 함
+            List<Employment> allEmployments = employmentRepository.findAll();
+            List<Employment> storeEmployments = allEmployments.stream()
+                .filter(e -> e.getStore() != null && e.getStore().getId().equals(store.getId()))
+                .toList();
+            employmentRepository.deleteAll(storeEmployments);
+
+            // 3. 매장 삭제 (매장 삭제 시 관련 데이터는 cascade 또는 별도 처리 필요)
+            storeRepository.delete(store);
+        }
+
+        // 4. 급여 지급 내역 삭제
+        List<com.paymate.paymate_server.domain.salary.entity.SalaryPayment> salaryPayments = 
+            salaryPaymentRepository.findAllByUserOrderByPeriodStartDesc(user);
+        salaryPaymentRepository.deleteAll(salaryPayments);
+
+        // 5. 알림 삭제
+        List<com.paymate.paymate_server.domain.notification.entity.Notification> notifications = 
+            notificationRepository.findAllByUserIdOrderByCreatedAtDesc(user.getId());
+        notificationRepository.deleteAll(notifications);
     }
 
     /**
