@@ -157,6 +157,8 @@ public class AttendanceService {
 
         return list.stream().map(a -> AttendanceDto.AttendanceLog.builder()
                 .attendanceId(a.getId())
+                .userId(a.getUser() != null ? a.getUser().getId() : null)
+                .name(a.getUser() != null ? a.getUser().getName() : null)
                 .workDate(a.getCheckInTime().toLocalDate().toString())
                 .storeName(a.getStore().getName())
                 .startTime(a.getCheckInTime())
@@ -203,6 +205,8 @@ public class AttendanceService {
         List<AttendanceDto.AttendanceLog> logs = list.stream().map(a -> {
             return AttendanceDto.AttendanceLog.builder()
                     .attendanceId(a.getId())
+                    .userId(a.getUser() != null ? a.getUser().getId() : null)
+                    .name(a.getUser() != null ? a.getUser().getName() : null)
                     .workDate(a.getWorkDate())
                     .storeName(a.getStore().getName())
                     .startTime(a.getCheckInTime())

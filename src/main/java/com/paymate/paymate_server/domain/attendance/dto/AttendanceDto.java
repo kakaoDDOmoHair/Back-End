@@ -57,6 +57,8 @@ public class AttendanceDto {
     @AllArgsConstructor
     public static class AttendanceLog {
         private Long attendanceId;
+        private Long userId;     // 직원 ID (today 목록에서 "누가" 출근했는지 표시용)
+        private String name;    // 직원 이름
         private String workDate; // "2026-01-06"
         private String storeName;
         private LocalDateTime startTime;
