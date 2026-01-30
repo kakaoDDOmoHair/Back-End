@@ -164,7 +164,7 @@ public class SalaryService {
     @Transactional(readOnly = true)
     public SalaryDto.EstimatedResponse getEstimatedSalary(Long storeId, Long userId, int year, int month) {
         User user = memberRepository.findById(userId).orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
-        Integer hourlyWage = (user.getHourlyWage() != null && user.getHourlyWage() > 0) ? user.getHourlyWage() : 9860;
+        Integer hourlyWage = (user.getHourlyWage() != null && user.getHourlyWage() > 0) ? user.getHourlyWage() : 10320;
 
         LocalDate start = LocalDate.of(year, month, 1);
         LocalDate end = start.withDayOfMonth(start.lengthOfMonth());
@@ -410,7 +410,7 @@ public class SalaryService {
             context.setVariable("weeklyAllowance", detail.getWeeklyAllowance());
             context.setVariable("tax", detail.getTax());
             context.setVariable("totalHours", detail.getTotalHours());
-            context.setVariable("hourlyWage", (payment.getUser().getHourlyWage() != null) ? payment.getUser().getHourlyWage() : 9860);
+            context.setVariable("hourlyWage", (payment.getUser().getHourlyWage() != null) ? payment.getUser().getHourlyWage() : 10320);
 
             String html = templateEngine.process("payslip-template", context);
 
@@ -570,7 +570,7 @@ public class SalaryService {
                 .orElseThrow(() -> new IllegalArgumentException("정산 내역을 찾을 수 없습니다."));
 
         User user = payment.getUser();
-        int hourlyWage = (user.getHourlyWage() != null && user.getHourlyWage() > 0) ? user.getHourlyWage() : 9860;
+        int hourlyWage = (user.getHourlyWage() != null && user.getHourlyWage() > 0) ? user.getHourlyWage() : 10320;
 
         long baseSalary = Math.round(payment.getTotalHours() * hourlyWage);
         long tax = Math.round((payment.getTotalAmount() / 0.967) * 0.033);
@@ -610,7 +610,7 @@ public class SalaryService {
         context.setVariable("weeklyAllowance", detail.getWeeklyAllowance());
         context.setVariable("tax", detail.getTax());
         context.setVariable("totalHours", detail.getTotalHours());
-        context.setVariable("hourlyWage", (payment.getUser().getHourlyWage() != null) ? payment.getUser().getHourlyWage() : 9860);
+        context.setVariable("hourlyWage", (payment.getUser().getHourlyWage() != null) ? payment.getUser().getHourlyWage() : 10320);
 
         return templateEngine.process("payslip-template", context);
     }

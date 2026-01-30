@@ -218,7 +218,7 @@ public class AttendanceService {
         for (Attendance a : list) {
             double hours = a.calculateTotalHours();
             totalTime += hours;
-            totalWage += (long) (hours * 9860);
+            totalWage += (long) (hours * 10320);
         }
 
         Map<String, Double> summary = new HashMap<>();
@@ -242,7 +242,7 @@ public class AttendanceService {
                 .name(a.getUser().getName())
                 .startTime(a.getCheckInTime() != null ? a.getCheckInTime().toLocalTime().toString() : "-")
                 .endTime(a.getCheckOutTime() != null ? a.getCheckOutTime().toLocalTime().toString() : "-")
-                .wage((long) (a.calculateTotalHours() * 9860))
+                .wage((long) (a.calculateTotalHours() * 10320))
                 .build()).collect(Collectors.toList());
     }
 
