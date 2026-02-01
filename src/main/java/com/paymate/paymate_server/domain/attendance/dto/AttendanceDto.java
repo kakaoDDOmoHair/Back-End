@@ -88,15 +88,19 @@ public class AttendanceDto {
         private List<AttendanceLog> list;    // 상세 리스트
     }
 
-    // 8. 일별 근무 기록 조회 Response
+    // 8. 일별 근무 기록 조회 Response (프론트 daily 목록·오늘 상태 표시용)
     @Getter
     @Builder
     @AllArgsConstructor
+    @NoArgsConstructor
     public static class DailyLog {
+        private Long attendanceId;
+        private Long userId;
         private String name;
         private String startTime;
         private String endTime;
         private Long wage;
+        private String status;  // ON, OFF, LATE, ABSENT 등
     }
 
     // 9. 근무 기록 직접 등록 Request

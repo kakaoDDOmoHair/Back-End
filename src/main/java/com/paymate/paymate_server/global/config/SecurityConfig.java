@@ -52,7 +52,6 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/attendances/**").permitAll()
                         .requestMatchers("/api/v1/salary/**").permitAll()
                         .requestMatchers("/api/v1/todos/**").permitAll()
-                        // [인증 필요]
                         .requestMatchers("/api/v1/modifications/**").permitAll()
                         .anyRequest().authenticated()
                 )

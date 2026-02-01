@@ -67,11 +67,22 @@ public class AttendanceController {
         return ResponseEntity.ok(Map.of("success", true, "data", data));
     }
 
-    // 6. 일별 근무 기록 조회 (Daily)
+    // 6. 일별 근무 기록 조회 (Daily) — 응답을 { success, code, data } 형태로 통일
     @GetMapping("/daily")
-    public ResponseEntity<List<AttendanceDto.DailyLog>> getDaily(
+    public ResponseEntity<Map<String, Object>> getDaily(
             @RequestParam Long storeId, @RequestParam String date) {
-        return ResponseEntity.ok(attendanceService.getDailyLog(storeId, date));
+        List<AttendanceDto.DailyLog> list = attendanceService.getDailyLog(storeId, date);
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("code", 200);
+        response.put("data", list);
+        return ResponseEntity.ok(response);
+    }
+
+    // 6-1. 현재 출근 중인 기록 조회 (퇴근 전 attendanceId 복구용)
+    @GetMapping("/current")
+    public ResponseEntity<Map<String, Object>> getCurrentOpen(@RequestParam Long userId) {
+        return ResponseEntity.ok(attendanceService.getCurrentOpenAttendance(userId));
     }
 
     // 7. 근무 기록 직접 등록

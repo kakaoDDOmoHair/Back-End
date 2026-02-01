@@ -1,5 +1,7 @@
 package com.paymate.paymate_server.global.jwt;
 
+import com.paymate.paymate_server.domain.member.entity.User;
+import com.paymate.paymate_server.domain.member.repository.MemberRepository;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -9,14 +11,13 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import java.security.Key;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -24,11 +25,12 @@ import java.util.stream.Collectors;
 public class JwtTokenProvider {
 
     private final Key key;
+    private final MemberRepository memberRepository;
 
-    // application.yml에서 jwt.secret 값을 가져와서 비밀키로 설정
-    public JwtTokenProvider(@Value("${jwt.secret}") String secretKey) {
+    public JwtTokenProvider(@Value("${jwt.secret}") String secretKey, MemberRepository memberRepository) {
         byte[] keyBytes = Decoders.BASE64.decode(secretKey);
         this.key = Keys.hmacShaKeyFor(keyBytes);
+        this.memberRepository = memberRepository;
     }
 
     // 1. 토큰 생성 (로그인 성공 시 호출)
@@ -61,20 +63,22 @@ public class JwtTokenProvider {
                 .build();
     }
 
-    // 2. 토큰에서 인증 정보(유저 정보) 꺼내기
+    // 2. 토큰에서 인증 정보(유저 정보) 꺼내기 — CustomUserDetails 사용 (modifications 등 @AuthenticationPrincipal CustomUserDetails 매칭용)
     public Authentication getAuthentication(String accessToken) {
         Claims claims = parseClaims(accessToken);
         if (claims.get("auth") == null) {
             return null;
         }
 
-        Collection<? extends GrantedAuthority> authorities =
-                Arrays.stream(claims.get("auth").toString().split(","))
-                        .map(SimpleGrantedAuthority::new)
-                        .collect(Collectors.toList());
+        // subject = 로그인 시 authentication.getName() = user.getUsername() (AuthService.getAuthentication)
+        Optional<User> userOpt = memberRepository.findByUsername(claims.getSubject());
+        if (userOpt.isEmpty()) {
+            log.debug("JWT subject(username)에 해당하는 사용자가 없음: {}", claims.getSubject());
+            return null;
+        }
 
-        UserDetails principal = new User(claims.getSubject(), "", authorities);
-        return new UsernamePasswordAuthenticationToken(principal, "", authorities);
+        CustomUserDetails principal = new CustomUserDetails(userOpt.get());
+        return new UsernamePasswordAuthenticationToken(principal, "", principal.getAuthorities());
     }
 
     // 3. 토큰이 유효한지 검사
