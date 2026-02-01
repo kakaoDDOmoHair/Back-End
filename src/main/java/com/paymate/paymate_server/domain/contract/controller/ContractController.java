@@ -4,8 +4,8 @@ import com.paymate.paymate_server.domain.contract.dto.ContractRequest;
 import com.paymate.paymate_server.domain.contract.dto.ContractResponse;
 import com.paymate.paymate_server.domain.contract.enums.ContractStatus;
 import com.paymate.paymate_server.domain.contract.service.ContractService;
+import com.paymate.paymate_server.global.response.PageResponseDto;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.MediaType;
@@ -45,13 +45,13 @@ public class ContractController {
 
     // 3. 계약서 목록 조회 (Query Param 방식: ?storeId=1 또는 ?userId=1)
     @GetMapping
-    public ResponseEntity<Page<ContractResponse>> getContractList(
+    public ResponseEntity<PageResponseDto<ContractResponse>> getContractList(
             @RequestParam(required = false) Long storeId,
             @RequestParam(required = false) Long userId,
             @RequestParam(required = false) ContractStatus status,
             @PageableDefault(size = 10) Pageable pageable) {
 
-        return ResponseEntity.ok(contractService.getContractList(storeId, userId, status, pageable));
+        return ResponseEntity.ok(PageResponseDto.of(contractService.getContractList(storeId, userId, status, pageable)));
     }
 
     // 4. 계약서 스캔 (파일 업로드 + 가상 OCR + 계약서 생성)

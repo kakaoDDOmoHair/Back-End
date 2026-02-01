@@ -36,6 +36,9 @@ out/
 ### VS Code ###
 .vscode/
 
+### 프론트 분석용 클론 (업로드 제외) ###
+_frontend_analysis/
+
 ### Security & Local Config ###
 src/main/resources/application.ymlsrc/main/resources/firebase-service-account.json
 src/main/resources/application.yml

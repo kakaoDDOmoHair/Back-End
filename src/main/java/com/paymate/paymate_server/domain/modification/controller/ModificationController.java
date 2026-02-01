@@ -7,14 +7,18 @@ import com.paymate.paymate_server.domain.modification.enums.RequestStatus;
 import com.paymate.paymate_server.domain.modification.service.ModificationService;
 import com.paymate.paymate_server.global.jwt.CustomUserDetails;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/modifications")
 @RequiredArgsConstructor
@@ -25,10 +29,17 @@ public class ModificationController {
     // 1. 정정 요청 등록 (POST)
     @PostMapping
     public ResponseEntity<?> createModification(
+            HttpServletRequest request,
             @AuthenticationPrincipal CustomUserDetails userDetails,
             @RequestBody ModificationRequestDto requestDto) {
 
-        // 유저 ID를 서비스로 전달
+        if (userDetails == null) {
+            String authHeader = request.getHeader("Authorization");
+            boolean hasAuth = StringUtils.hasText(authHeader);
+            boolean startsWithBearer = hasAuth && authHeader.startsWith("Bearer ");
+            log.info("[401 디버깅] POST /modifications | Authorization존재={} | Bearer공백시작={} | response=401 로그인이 필요합니다.", hasAuth, startsWithBearer);
+            return ResponseEntity.status(401).body(Map.of("success", false, "message", "로그인이 필요합니다."));
+        }
         ModificationResponseDto response = modificationService.createModification(userDetails.getId(), requestDto);
 
         return ResponseEntity.ok(Map.of(
@@ -60,10 +71,18 @@ public class ModificationController {
     // 4. 요청 승인/거절 처리 (PATCH) - 🛡️ [보안 강화] 사장님만 가능!
     @PatchMapping("/{requestId}/status")
     public ResponseEntity<?> updateStatus(
+            HttpServletRequest request,
             @PathVariable Long requestId,
             @RequestBody Map<String, String> body,
-            @AuthenticationPrincipal CustomUserDetails userDetails // 👈 유저 정보 받아오기
+            @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
+        if (userDetails == null) {
+            String authHeader = request.getHeader("Authorization");
+            boolean hasAuth = StringUtils.hasText(authHeader);
+            boolean startsWithBearer = hasAuth && authHeader.startsWith("Bearer ");
+            log.info("[401 디버깅] PATCH /modifications/{}/status | Authorization존재={} | Bearer공백시작={} | response=401 로그인이 필요합니다.", requestId, hasAuth, startsWithBearer);
+            return ResponseEntity.status(401).body(Map.of("success", false, "message", "로그인이 필요합니다."));
+        }
         // 🚨 [보안 검문소] 사장님(OWNER)이 아니면 403 Forbidden 리턴
         if (userDetails.getUser().getRole() != UserRole.OWNER) {
             return ResponseEntity.status(403).body(Map.of(

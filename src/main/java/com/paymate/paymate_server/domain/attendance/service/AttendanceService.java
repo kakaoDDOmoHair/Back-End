@@ -167,6 +167,35 @@ public class AttendanceService {
                 .build()).collect(Collectors.toList());
     }
 
+    // 3-1. 현재 출근 중인 기록 1건 조회 (퇴근 전 attendanceId 복구용)
+    @Transactional(readOnly = true)
+    public Map<String, Object> getCurrentOpenAttendance(Long userId) {
+        User user = memberRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("사용자 없음"));
+
+        Optional<Attendance> on = attendanceRepository.findByUserAndStatus(user, AttendanceStatus.ON);
+        if (on.isPresent()) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("attendanceId", on.get().getId());
+            result.put("status", "ON");
+            return result;
+        }
+        Optional<Attendance> late = attendanceRepository.findByUserAndStatus(user, AttendanceStatus.LATE);
+        if (late.isPresent()) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("attendanceId", late.get().getId());
+            result.put("status", "LATE");
+            return result;
+        }
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("attendanceId", null);
+        result.put("message", "출근 중인 기록이 없습니다.");
+        return result;
+    }
+
     // 4. 관리자 수정 (기존 Develop 코드 유지)
     public void modifyAttendance(Long attendanceId, AttendanceDto.ModifyRequest request) {
         Attendance attendance = attendanceRepository.findById(attendanceId)
@@ -239,10 +268,13 @@ public class AttendanceService {
         List<Attendance> list = attendanceRepository.findAllByStoreAndWorkDate(store, date);
 
         return list.stream().map(a -> AttendanceDto.DailyLog.builder()
-                .name(a.getUser().getName())
+                .attendanceId(a.getId())
+                .userId(a.getUser() != null ? a.getUser().getId() : null)
+                .name(a.getUser() != null ? a.getUser().getName() : null)
                 .startTime(a.getCheckInTime() != null ? a.getCheckInTime().toLocalTime().toString() : "-")
                 .endTime(a.getCheckOutTime() != null ? a.getCheckOutTime().toLocalTime().toString() : "-")
                 .wage((long) (a.calculateTotalHours() * 10320))
+                .status(a.getStatus() != null ? a.getStatus().toString() : null)
                 .build()).collect(Collectors.toList());
     }
 
