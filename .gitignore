@@ -38,6 +38,10 @@ out/
 
 ### 프론트 분석용 클론 (업로드 제외) ###
 _frontend_analysis/
+Front-End/
+
+### 문서 (원격 업로드 제외) ###
+docs/
 
 ### Security & Local Config ###
 src/main/resources/application.ymlsrc/main/resources/firebase-service-account.json

@@ -10,6 +10,7 @@ import com.paymate.paymate_server.domain.store.dto.DashboardResponse;
 import com.paymate.paymate_server.domain.store.dto.JoinRequest;
 import com.paymate.paymate_server.domain.store.dto.StoreRequest;
 import com.paymate.paymate_server.domain.store.dto.StoreResponse;
+import com.paymate.paymate_server.domain.store.dto.StoreWorkerResponse;
 import com.paymate.paymate_server.domain.store.entity.Employment;
 import com.paymate.paymate_server.domain.store.entity.Store;
 import com.paymate.paymate_server.domain.store.repository.EmploymentRepository;
@@ -20,7 +21,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -140,5 +143,20 @@ public class StoreService {
 
     public DashboardResponse getStoreDashboard(Long storeId) {
         return new DashboardResponse(4250000L, 5.2, "2026-01-05");
+    }
+
+    /**
+     * 매장 소속 알바생 목록 조회 — Employment 기준 (등록된 알바생은 User.store_id 없어도 포함)
+     */
+    @Transactional(readOnly = true)
+    public List<StoreWorkerResponse> getStoreWorkers(Long storeId) {
+        storeRepository.findById(storeId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 매장이 없습니다."));
+        List<User> workers = employmentRepository.findByStore_IdAndRole(storeId, UserRole.WORKER).stream()
+                .map(Employment::getEmployee)
+                .collect(Collectors.toList());
+        return workers.stream()
+                .map(StoreWorkerResponse::from)
+                .collect(Collectors.toList());
     }
 }

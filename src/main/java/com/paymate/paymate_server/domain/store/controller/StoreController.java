@@ -1,10 +1,18 @@
 package com.paymate.paymate_server.domain.store.controller;
 
-import com.paymate.paymate_server.domain.store.dto.*;
+import com.paymate.paymate_server.domain.store.dto.JoinRequest;
+import com.paymate.paymate_server.domain.store.dto.JoinResponse;
+import com.paymate.paymate_server.domain.store.dto.StoreRequest;
+import com.paymate.paymate_server.domain.store.dto.StoreResponse;
+import com.paymate.paymate_server.domain.store.dto.StoreWorkerResponse;
+import com.paymate.paymate_server.domain.store.dto.CheckBusinessResponse;
+import com.paymate.paymate_server.domain.store.dto.DashboardResponse;
 import com.paymate.paymate_server.domain.store.service.StoreService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/stores")
@@ -55,6 +63,14 @@ public class StoreController {
 
         Long storeId = storeService.joinStore(request);
         return ResponseEntity.ok(new JoinResponse("매장 가입 성공", storeId));
+    }
+
+    /**
+     * 매장 소속 알바생 목록 조회
+     */
+    @GetMapping("/{storeId}/workers")
+    public ResponseEntity<List<StoreWorkerResponse>> getStoreWorkers(@PathVariable Long storeId) {
+        return ResponseEntity.ok(storeService.getStoreWorkers(storeId));
     }
 
 }

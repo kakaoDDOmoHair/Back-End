@@ -25,6 +25,16 @@ public class SalaryController {
     }
 
     // 2. 이체 완료 확정
+    @PatchMapping("/{paymentId}/acknowledge")
+    public ResponseEntity<Map<String, Object>> acknowledgePayment(@PathVariable Long paymentId) {
+        salaryService.acknowledgePayment(paymentId);
+        return ResponseEntity.ok(Map.of(
+                "status", "success",
+                "message", "확인 처리되었습니다.",
+                "paymentId", paymentId
+        ));
+    }
+
     @PatchMapping("/{paymentId}/complete")
     public ResponseEntity<Map<String, String>> completePayment(
             @PathVariable Long paymentId,
