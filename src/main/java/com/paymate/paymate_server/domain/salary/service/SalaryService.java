@@ -52,6 +52,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.IsoFields;
 import java.util.List;
 import java.util.Map;
@@ -298,24 +300,33 @@ public class SalaryService {
         // 2. 이미 해당 월에 생성된 정산 내역 조회
         List<SalaryPayment> existingPayments = salaryPaymentRepository.findAllByStoreAndPeriod(storeId, start, end);
 
-        // 3. 전체 알바생 목록을 기준으로 DTO 생성
+        // 3. 전체 알바생 목록을 기준으로 DTO 생성 (REQUESTED일 때 requestedAt = 정산 요청 시각, KST)
+        // DB/서버 시각(UTC 등)을 KST로 변환해 내려줘야 사장님 알림에 "N시간 전"이 맞게 표시됨
+        ZoneId kst = ZoneId.of("Asia/Seoul");
         List<SalaryDto.MonthlyResponse> list = workers.stream().map(worker -> {
-            // 이 알바생의 이번 달 정산 데이터가 이미 생성되었는지 확인
             Optional<SalaryPayment> paymentOpt = existingPayments.stream()
                     .filter(p -> p.getUser().getId().equals(worker.getId()))
                     .findFirst();
 
+            String requestedAt = null;
+            if (paymentOpt.isPresent()) {
+                SalaryPayment p = paymentOpt.get();
+                if (p.getStatus() == PaymentStatus.REQUESTED && p.getUpdatedAt() != null) {
+                    requestedAt = p.getUpdatedAt()
+                            .atZone(ZoneId.systemDefault())
+                            .withZoneSameInstant(kst)
+                            .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+                }
+            }
+
             return SalaryDto.MonthlyResponse.builder()
                     .name(worker.getName())
-                    // 정산 내역이 있으면 그 금액, 없으면 아직 0원
                     .amount(paymentOpt.map(SalaryPayment::getTotalAmount).orElse(0L))
-                    // 정산 내역 유무에 따른 상태 표시
                     .status(paymentOpt.map(p -> p.getStatus().toString()).orElse("NOT_STARTED"))
                     .userId(worker.getId())
-                    // 아까 동기화 성공한 유저의 accountId 사용
                     .accountId(worker.getAccountId() != null ? Long.valueOf(worker.getAccountId()) : null)
-                    // 이메일/엑셀 등에서 사용할 paymentId
                     .paymentId(paymentOpt.map(SalaryPayment::getId).orElse(null))
+                    .requestedAt(requestedAt)
                     .build();
         }).collect(Collectors.toList());
 

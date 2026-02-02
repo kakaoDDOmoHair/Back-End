@@ -15,7 +15,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -30,6 +33,32 @@ public class ScheduleService {
     private final StoreRepository storeRepository;
     private final MemberRepository memberRepository;
     private final NotificationService notificationService;
+
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+
+    /** LocalDateTime → KST ISO 8601 (알림 "N분 전" 등용). */
+    private static String toIsoKst(LocalDateTime dt) {
+        if (dt == null) return null;
+        return dt.atZone(ZoneId.systemDefault())
+                .withZoneSameInstant(KST)
+                .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+    }
+
+    /** 등록 시각(KST ISO 8601). 실제 등록한 시간만 내려줌 → 알림에 "N분 전" 표시. createdAt 없으면 null. */
+    private static String registeredAt(Schedule s) {
+        return toIsoKst(s.getCreatedAt());
+    }
+
+    /** workDate + start/end 시각을 KST ISO 8601 문자열로. 야간(end<start)이면 end는 다음날. */
+    private static String[] toIsoKstRange(LocalDate workDate, LocalTime start, LocalTime end) {
+        LocalDateTime startDt = LocalDateTime.of(workDate, start);
+        LocalDateTime endDt = (end.isBefore(start) || end.equals(start))
+                ? LocalDateTime.of(workDate.plusDays(1), end)
+                : LocalDateTime.of(workDate, end);
+        String startIso = startDt.atZone(KST).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+        String endIso = endDt.atZone(KST).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+        return new String[]{startIso, endIso};
+    }
 
     // 1. 근무 스케줄 등록
     @Transactional
@@ -68,24 +97,31 @@ public class ScheduleService {
                 .build();
     }
 
-    // 2. 월간 스케줄 조회
+    // 2. 월간 스케줄 조회 (time + startTime/endTime ISO 8601 KST, registeredAt)
     public List<ScheduleDto.MonthlyResponse> getMonthlySchedule(Long storeId, int year, int month) {
         return scheduleRepository.findMonthlySchedule(storeId, year, month).stream()
-                .map(s -> ScheduleDto.MonthlyResponse.builder()
-                        .date(s.getWorkDate().toString())
-                        .userId(s.getUser().getId())
-                        .name(s.getUser().getName())
-                        .time(s.getStartTime().toString().substring(0, 5) + "~" + s.getEndTime().toString().substring(0, 5))
-                        .build())
+                .map(s -> {
+                    String[] iso = toIsoKstRange(s.getWorkDate(), s.getStartTime(), s.getEndTime());
+                    return ScheduleDto.MonthlyResponse.builder()
+                            .date(s.getWorkDate().toString())
+                            .userId(s.getUser().getId())
+                            .name(s.getUser().getName())
+                            .time(s.getStartTime().toString().substring(0, 5) + "~" + s.getEndTime().toString().substring(0, 5))
+                            .startTime(iso[0])
+                            .endTime(iso[1])
+                            .registeredAt(registeredAt(s))
+                            .build();
+                })
                 .collect(Collectors.toList());
     }
 
-    // 3. 주간 근무 시간표 조회 (사장님용)
-    public List<ScheduleDto.WeeklyResponse> getWeeklySchedule(Long storeId, LocalDate startDate) {
+    // 3. 주간 근무 시간표 조회 (사장님용). weeks=1(기본) 이번주만, weeks=2 면 이번주+다음주 (알림 센터에서 다음주 근무도 표시)
+    public List<ScheduleDto.WeeklyResponse> getWeeklySchedule(Long storeId, LocalDate startDate, int weeks) {
         Store store = storeRepository.findById(storeId)
                 .orElseThrow(() -> new IllegalArgumentException("매장 없음"));
 
-        LocalDate endDate = startDate.plusDays(6);
+        int safeWeeks = Math.max(1, Math.min(weeks, 52)); // 1~52주 (알림 센터에서 전체 등록 스케줄 표시 시 weeks=52 등 사용)
+        LocalDate endDate = startDate.plusDays(7 * safeWeeks - 1);
         List<Schedule> schedules = scheduleRepository.findByStoreAndWorkDateBetween(store, startDate, endDate);
 
         List<ScheduleDto.WeeklyResponse> response = new ArrayList<>();
@@ -103,13 +139,22 @@ public class ScheduleService {
                                     .scheduleId(s.getId())
                                     .name(s.getUser().getName())
                                     .breakTime(s.getBreakTime()) // Integer로 반환
+                                    .registeredAt(registeredAt(s))
                                     .build(), Collectors.toList())
                     ));
 
             for (Map.Entry<String, List<ScheduleDto.WeeklyResponse.WorkerInfo>> entry : byTimeRange.entrySet()) {
+                String timeKey = entry.getKey();
+                String[] parts = timeKey.split("~");
+                LocalTime start = LocalTime.parse(parts[0].trim());
+                LocalTime end = LocalTime.parse(parts[1].trim());
+                String[] iso = toIsoKstRange(date, start, end);
                 response.add(ScheduleDto.WeeklyResponse.builder()
                         .day(dayStr)
-                        .time(entry.getKey())
+                        .workDate(date.toString())
+                        .time(timeKey)
+                        .startTime(iso[0])
+                        .endTime(iso[1])
                         .workers(entry.getValue())
                         .build());
             }
@@ -117,15 +162,19 @@ public class ScheduleService {
         return response;
     }
 
-    // 4. 내 근무 시간표 조회 (알바생용)
+    // 4. 내 근무 시간표 조회 (알바생용) — startTime/endTime ISO 8601 KST, registeredAt
     public List<ScheduleDto.MyWeeklyResponse> getMyWeeklySchedule(Long userId, LocalDate startDate) {
         return scheduleRepository.findAllByUser_IdOrderByWorkDateDesc(userId).stream()
-                .map(s -> ScheduleDto.MyWeeklyResponse.builder()
-                        .date(s.getWorkDate())
-                        .startTime(s.getStartTime().toString().substring(0, 5))
-                        .endTime(s.getEndTime().toString().substring(0, 5))
-                        .breakTime(s.getBreakTime()) // Integer 반환 (DTO가 Integer일 때)
-                        .build())
+                .map(s -> {
+                    String[] iso = toIsoKstRange(s.getWorkDate(), s.getStartTime(), s.getEndTime());
+                    return ScheduleDto.MyWeeklyResponse.builder()
+                            .date(s.getWorkDate())
+                            .startTime(iso[0])
+                            .endTime(iso[1])
+                            .breakTime(s.getBreakTime())
+                            .registeredAt(registeredAt(s))
+                            .build();
+                })
                 .collect(Collectors.toList());
     }
 

@@ -40,8 +40,35 @@ public class AttendanceService {
     private final StoreRepository storeRepository;
     private final ScheduleRepository scheduleRepository;
 
-    // [추가] 알림 서비스 주입
     private final NotificationService notificationService;
+
+    /**
+     * DB 시각을 KST ISO 8601 문자열로 내려줌 (예: "2025-01-31T10:21:00+09:00").
+     * 저장 시각은 서버 기본 타임존(UTC 등)일 수 있으므로, 서버 시각 → KST로 변환해 표시.
+     * (서버가 UTC면 01:21 저장 → 10:21 KST로 내려줘서 "기록 시간"이 10:21로 보이게 함)
+     */
+    private static String toIsoKst(LocalDateTime dt) {
+        if (dt == null) return null;
+        return dt.atZone(ZoneId.systemDefault())
+                .withZoneSameInstant(ZoneId.of("Asia/Seoul"))
+                .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+    }
+
+    /** 표시용 "HH:mm~HH:mm" 또는 "HH:mm~" (기록 시간 컬럼용). DB 시각을 KST로 해석 후 포맷. 퇴근 전이면 "HH:mm~" */
+    private static String formatTimeDisplay(LocalDateTime start, LocalDateTime end) {
+        if (start == null) return "";
+        ZoneId kst = ZoneId.of("Asia/Seoul");
+        String startStr = start.atZone(ZoneId.systemDefault())
+                .withZoneSameInstant(kst)
+                .toLocalTime()
+                .format(DateTimeFormatter.ofPattern("HH:mm"));
+        if (end == null) return startStr + "~";
+        String endStr = end.atZone(ZoneId.systemDefault())
+                .withZoneSameInstant(kst)
+                .toLocalTime()
+                .format(DateTimeFormatter.ofPattern("HH:mm"));
+        return startStr + "~" + endStr;
+    }
 
     // 1. 출근 (Clock-In)
     public AttendanceDto.ClockInResponse clockIn(AttendanceDto.ClockInRequest request) {
@@ -176,8 +203,9 @@ public class AttendanceService {
                 .name(a.getUser() != null ? a.getUser().getName() : null)
                 .workDate(a.getCheckInTime() != null ? a.getCheckInTime().toLocalDate().toString() : a.getWorkDate())
                 .storeName(a.getStore().getName())
-                .startTime(a.getCheckInTime())
-                .endTime(a.getCheckOutTime())
+                .startTime(toIsoKst(a.getCheckInTime()))
+                .endTime(toIsoKst(a.getCheckOutTime()))
+                .time(formatTimeDisplay(a.getCheckInTime(), a.getCheckOutTime()))
                 .status(a.getStatus().toString())
                 .build()).collect(Collectors.toList());
     }
@@ -246,18 +274,17 @@ public class AttendanceService {
         double totalTime = 0.0;
         long totalWage = 0;
 
-        List<AttendanceDto.AttendanceLog> logs = list.stream().map(a -> {
-            return AttendanceDto.AttendanceLog.builder()
-                    .attendanceId(a.getId())
-                    .userId(a.getUser() != null ? a.getUser().getId() : null)
-                    .name(a.getUser() != null ? a.getUser().getName() : null)
-                    .workDate(a.getWorkDate())
-                    .storeName(a.getStore().getName())
-                    .startTime(a.getCheckInTime())
-                    .endTime(a.getCheckOutTime())
-                    .status(a.getStatus().toString())
-                    .build();
-        }).collect(Collectors.toList());
+        List<AttendanceDto.AttendanceLog> logs = list.stream().map(a -> AttendanceDto.AttendanceLog.builder()
+                .attendanceId(a.getId())
+                .userId(a.getUser() != null ? a.getUser().getId() : null)
+                .name(a.getUser() != null ? a.getUser().getName() : null)
+                .workDate(a.getWorkDate())
+                .storeName(a.getStore().getName())
+                .startTime(toIsoKst(a.getCheckInTime()))
+                .endTime(toIsoKst(a.getCheckOutTime()))
+                .time(formatTimeDisplay(a.getCheckInTime(), a.getCheckOutTime()))
+                .status(a.getStatus().toString())
+                .build()).collect(Collectors.toList());
 
         for (Attendance a : list) {
             double hours = a.calculateTotalHours();
@@ -286,8 +313,9 @@ public class AttendanceService {
                 .attendanceId(a.getId())
                 .userId(a.getUser() != null ? a.getUser().getId() : null)
                 .name(a.getUser() != null ? a.getUser().getName() : null)
-                .startTime(a.getCheckInTime() != null ? a.getCheckInTime().toLocalTime().toString() : "-")
-                .endTime(a.getCheckOutTime() != null ? a.getCheckOutTime().toLocalTime().toString() : "-")
+                .startTime(toIsoKst(a.getCheckInTime()))
+                .endTime(toIsoKst(a.getCheckOutTime()))
+                .time(formatTimeDisplay(a.getCheckInTime(), a.getCheckOutTime()))
                 .wage((long) (a.calculateTotalHours() * 10320))
                 .status(a.getStatus() != null ? a.getStatus().toString() : null)
                 .build()).collect(Collectors.toList());

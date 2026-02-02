@@ -47,3 +47,7 @@ docs/
 src/main/resources/application.ymlsrc/main/resources/firebase-service-account.json
 src/main/resources/application.yml
 src/main/resources/firebase-service-account.json
+
+### Docker (로컬/배포용, 원격 업로드 제외) ###
+docker-compose.yml
+docker-compose*.yml

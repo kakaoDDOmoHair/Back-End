@@ -52,17 +52,22 @@ public class AttendanceDto {
     }
 
     // 5. 월간/일간 조회 Response (공통 List Item)
+    // startTime, endTime: ISO 8601 + 타임존 (KST 예: "2025-01-31T09:39:00+09:00") — "HH:mm"만 보내지 않음
     @Getter
     @Builder
     @AllArgsConstructor
     public static class AttendanceLog {
         private Long attendanceId;
-        private Long userId;     // 직원 ID (today 목록에서 "누가" 출근했는지 표시용)
-        private String name;    // 직원 이름
-        private String workDate; // "2026-01-06"
+        private Long userId;
+        private String name;
+        private String workDate;
         private String storeName;
-        private LocalDateTime startTime;
-        private LocalDateTime endTime;
+        /** 출근 시각 (ISO 8601 KST). 퇴근 전이면 endTime만 null */
+        private String startTime;
+        /** 퇴근 시각 (ISO 8601 KST). 아직 퇴근 전이면 null */
+        private String endTime;
+        /** 표시용 "HH:mm~HH:mm" 또는 "HH:mm~" (등록/기록 시간 컬럼용) */
+        private String time;
         private String status;
     }
 
@@ -89,6 +94,7 @@ public class AttendanceDto {
     }
 
     // 8. 일별 근무 기록 조회 Response (프론트 daily 목록·오늘 상태 표시용)
+    // startTime, endTime: ISO 8601 + 타임존 (KST). 퇴근 전이면 endTime null
     @Getter
     @Builder
     @AllArgsConstructor
@@ -97,10 +103,12 @@ public class AttendanceDto {
         private Long attendanceId;
         private Long userId;
         private String name;
-        private String startTime;
-        private String endTime;
+        private String startTime;  // ISO 8601 KST
+        private String endTime;   // ISO 8601 KST, 퇴근 전이면 null
+        /** 표시용 "HH:mm~HH:mm" 또는 "HH:mm~" (기록 시간 컬럼용) */
+        private String time;
         private Long wage;
-        private String status;  // ON, OFF, LATE, ABSENT 등
+        private String status;
     }
 
     // 9. 근무 기록 직접 등록 Request

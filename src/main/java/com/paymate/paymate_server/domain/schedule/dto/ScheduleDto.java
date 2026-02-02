@@ -33,7 +33,7 @@ public class ScheduleDto {
         private String status; // "ASSIGNED"
     }
 
-    // 3. 월간 조회 Response
+    // 3. 월간 조회 Response (time: "09:00~18:00", startTime/endTime: ISO 8601 KST)
     @Getter
     @Builder
     @AllArgsConstructor
@@ -43,6 +43,10 @@ public class ScheduleDto {
         private Long userId;
         private String name;
         private String time;
+        private String startTime;  // ISO 8601 KST (예: "2025-01-31T09:00:00+09:00")
+        private String endTime;    // ISO 8601 KST, 야간이면 다음날
+        /** 스케줄 등록 시각 (KST ISO 8601). 알림 "N분 전" 표시용 */
+        private String registeredAt;
     }
 
     // 4. 수정 요청 Request (알바생 -> 사장님)
@@ -67,14 +71,18 @@ public class ScheduleDto {
         private ScheduleRequestStatus status;
     }
 
-    // 6. 주간 조회 Response (사장님용)
+    // 6. 주간 조회 Response (사장님용) (time: "09:00~18:00", startTime/endTime: ISO 8601 KST)
     @Getter
     @Builder
     @AllArgsConstructor
     @NoArgsConstructor
     public static class WeeklyResponse {
         private String day;
+        /** 근무일 (YYYY-MM-DD). 알림 문구 "N월 N일 근무를 등록했습니다" 표시용 */
+        private String workDate;
         private String time;
+        private String startTime;  // ISO 8601 KST
+        private String endTime;   // ISO 8601 KST
         private List<WorkerInfo> workers;
 
         @Getter
@@ -85,19 +93,23 @@ public class ScheduleDto {
             private Long scheduleId;
             private String name;
             private Integer breakTime; // 결과값은 숫자로 반환
+            /** 해당 스케줄 등록 시각 (KST ISO 8601). 알림 "N분 전" 표시용 */
+            private String registeredAt;
         }
     }
 
-    // 7. 내 스케줄 조회 Response (알바생용)
+    // 7. 내 스케줄 조회 Response (알바생용) (startTime/endTime: ISO 8601 KST)
     @Getter
     @Builder
     @AllArgsConstructor
     @NoArgsConstructor
     public static class MyWeeklyResponse {
         private LocalDate date;
-        private String startTime;
-        private String endTime;
+        private String startTime;  // ISO 8601 KST (예: "2025-01-31T09:00:00+09:00")
+        private String endTime;    // ISO 8601 KST, 야간이면 다음날
         private Integer breakTime;
+        /** 스케줄 등록 시각 (KST ISO 8601). 알림 "N분 전" 표시용 */
+        private String registeredAt;
     }
 
     // 8. 사장님 직접 수정 Request (🌟 에러 해결 포인트)

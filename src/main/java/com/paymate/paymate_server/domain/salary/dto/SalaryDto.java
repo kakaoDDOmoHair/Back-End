@@ -1,5 +1,6 @@
 package com.paymate.paymate_server.domain.salary.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.*;
 import java.util.List;
 import java.util.Map;
@@ -66,6 +67,14 @@ public class SalaryDto {
         private Long accountId;
         private Long userId;
         private Long paymentId;
+        /** status가 REQUESTED일 때만 설정. 정산 요청 시각 (KST ISO-8601, 예: "2026-01-22T11:30:00+09:00"). 프론트는 requestedAt 또는 requested_at 읽음. */
+        private String requestedAt;
+
+        /** JSON에 requested_at 키로도 내려줌 (프론트 필드명 호환) */
+        @JsonProperty("requested_at")
+        public String getRequested_at() {
+            return requestedAt;
+        }
     }
 
     @Getter

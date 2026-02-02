@@ -2,6 +2,7 @@ package com.paymate.paymate_server.domain.schedule.entity;
 
 import com.paymate.paymate_server.domain.member.entity.User;
 import com.paymate.paymate_server.domain.store.entity.Store;
+import com.paymate.paymate_server.global.common.BaseTimeEntity;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -16,7 +17,7 @@ import java.time.LocalTime;
 @NoArgsConstructor // JPA를 위한 기본 생성자
 @AllArgsConstructor // @Builder를 위한 전체 인자 생성자
 @Builder // 클래스 레벨 빌더 사용
-public class Schedule {
+public class Schedule extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

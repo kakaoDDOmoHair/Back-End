@@ -40,12 +40,13 @@ public class ScheduleController {
 
 
 
-    // 5. 주간 근무 시간표 조회 (사장님용)
+    // 5. 주간 근무 시간표 조회 (사장님용). weeks=2 면 이번주+다음주 (알림 센터용)
     @GetMapping("/weekly")
     public ResponseEntity<List<ScheduleDto.WeeklyResponse>> getWeeklySchedule(
             @RequestParam Long storeId,
-            @RequestParam LocalDate startDate) {
-        return ResponseEntity.ok(scheduleService.getWeeklySchedule(storeId, startDate));
+            @RequestParam LocalDate startDate,
+            @RequestParam(required = false, defaultValue = "1") int weeks) {
+        return ResponseEntity.ok(scheduleService.getWeeklySchedule(storeId, startDate, weeks));
     }
 
     // 6. 내 근무 시간표 조회 (알바생용)
