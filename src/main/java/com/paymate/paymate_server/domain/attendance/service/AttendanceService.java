@@ -13,6 +13,7 @@ import com.paymate.paymate_server.domain.schedule.repository.ScheduleRepository;
 import com.paymate.paymate_server.domain.store.entity.Store;
 import com.paymate.paymate_server.domain.store.repository.StoreRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +32,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 @Transactional
 public class AttendanceService {
@@ -369,14 +371,50 @@ public class AttendanceService {
     // ✅ 여기에 붙여넣으세요!
     @Transactional
     public void updateByRequest(Long attendanceId, String afterValue) {
-        // 1. 수정할 근태 기록 찾기
         Attendance attendance = attendanceRepository.findById(attendanceId)
                 .orElseThrow(() -> new IllegalArgumentException("해당 근태 기록이 없습니다. ID=" + attendanceId));
 
-        // 2. 값 변경 로직 (String -> 시간/데이터 변환 필요)
-        // 예시: LocalDateTime parsedTime = LocalDateTime.parse(afterValue);
-        // attendance.updateTime(parsedTime);
+        if (afterValue == null || afterValue.isBlank()) {
+            throw new IllegalArgumentException("afterValue가 비어 있습니다. (예: 09:00~18:00)");
+        }
 
-        System.out.println("근태 기록 수정 완료: " + attendanceId + " -> " + afterValue);
+        // afterValue: "HH:mm~HH:mm"
+        String[] times = afterValue.split("~");
+        if (times.length != 2) {
+            throw new IllegalArgumentException("시간 형식이 올바르지 않습니다. (예: 09:00~18:00)");
+        }
+
+        LocalTime newStart = LocalTime.parse(times[0].trim());
+        LocalTime newEnd = LocalTime.parse(times[1].trim());
+
+        LocalDate baseDate;
+        if (attendance.getWorkDate() != null && !attendance.getWorkDate().isBlank()) {
+            baseDate = LocalDate.parse(attendance.getWorkDate());
+        } else if (attendance.getCheckInTime() != null) {
+            baseDate = attendance.getCheckInTime().toLocalDate();
+        } else if (attendance.getCheckOutTime() != null) {
+            baseDate = attendance.getCheckOutTime().toLocalDate();
+        } else {
+            baseDate = LocalDate.now();
+        }
+
+        LocalDateTime newCheckIn = LocalDateTime.of(baseDate, newStart);
+        LocalDateTime newCheckOut = (newEnd.isBefore(newStart) || newEnd.equals(newStart))
+                ? LocalDateTime.of(baseDate.plusDays(1), newEnd)
+                : LocalDateTime.of(baseDate, newEnd);
+
+        attendance.updateTimes(newCheckIn, newCheckOut);
+        log.info("✅ [AttendanceService] 근태 정정 완료! ID: {}, 변경시간: {} ~ {}", attendanceId, newStart, newEnd);
+    }
+
+    /** 정정 요청 승인(DELETE) 시 근태 기록 삭제 */
+    @Transactional
+    public void deleteByRequest(Long attendanceId) {
+        if (attendanceId == null) throw new IllegalArgumentException("attendanceId가 비어 있습니다.");
+        if (!attendanceRepository.existsById(attendanceId)) {
+            throw new IllegalArgumentException("해당 근태 기록이 없습니다. ID=" + attendanceId);
+        }
+        attendanceRepository.deleteById(attendanceId);
+        log.info("🗑️ [AttendanceService] 근태 삭제 완료! ID: {}", attendanceId);
     }
 }

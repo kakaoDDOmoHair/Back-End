@@ -25,6 +25,8 @@ public class SalaryDto {
         private Long amount;
         private Double totalHours; // 월 누적 근로시간
         private String status;
+        /** 명세서 이메일 발송 시각 (KST ISO 8601, 예: "2025-01-31T14:30:00+09:00"). null이면 미발송. */
+        private String payslipSentAt;
     }
 
     // 알바생용 현재 월 급여 조회 응답

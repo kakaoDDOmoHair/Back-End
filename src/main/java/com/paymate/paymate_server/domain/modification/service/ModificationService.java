@@ -10,6 +10,7 @@ import com.paymate.paymate_server.domain.modification.dto.ModificationResponseDt
 import com.paymate.paymate_server.domain.modification.entity.ModificationRequest;
 import com.paymate.paymate_server.domain.modification.enums.RequestStatus;
 import com.paymate.paymate_server.domain.modification.enums.RequestTargetType;
+import com.paymate.paymate_server.domain.modification.enums.RequestType;
 import com.paymate.paymate_server.domain.modification.repository.ModificationRepository;
 import com.paymate.paymate_server.domain.notification.entity.Notification;
 import com.paymate.paymate_server.domain.notification.enums.NotificationType;
@@ -24,6 +25,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -161,11 +163,66 @@ public class ModificationService {
     private void applyModificationToTarget(ModificationRequest request) {
         log.info(">>> [AUTO UPDATE] {} 수정 로직 실행. TargetID: {}", request.getTargetType(), request.getTargetId());
 
-        if (request.getTargetType() == RequestTargetType.ATTENDANCE) {
-            attendanceService.updateByRequest(request.getTargetId(), request.getAfterValue());
-        } else if (request.getTargetType() == RequestTargetType.SCHEDULE) {
-            scheduleService.updateSchedule(request.getTargetId(), request.getAfterValue());
+        RequestType requestType = request.getRequestType();
+        RequestTargetType targetType = request.getTargetType();
+
+        if (requestType == null || targetType == null) {
+            throw new IllegalArgumentException("요청 타입/대상 타입이 비어 있습니다.");
         }
+
+        // NOTE: UPDATE/DELETE는 targetId 필수. (REGISTER는 targetId가 null일 수 있음)
+        if ((requestType == RequestType.UPDATE || requestType == RequestType.DELETE) && request.getTargetId() == null) {
+            throw new IllegalArgumentException("UPDATE/DELETE 요청은 targetId가 필요합니다.");
+        }
+
+        if (targetType == RequestTargetType.SCHEDULE) {
+            if (requestType == RequestType.UPDATE) {
+                scheduleService.updateSchedule(request.getTargetId(), request.getAfterValue());
+                return;
+            }
+            if (requestType == RequestType.DELETE) {
+                scheduleService.deleteScheduleByRequest(request.getTargetId());
+                return;
+            }
+            if (requestType == RequestType.REGISTER) {
+                // 스케줄 등록 요청: afterValue(HH:mm~HH:mm)로 요청자 스케줄 생성 (breakTime=0)
+                String afterValue = request.getAfterValue();
+                if (afterValue == null) throw new IllegalArgumentException("등록 요청 afterValue가 비어 있습니다.");
+                String[] times = afterValue.split("~");
+                if (times.length != 2) throw new IllegalArgumentException("시간 형식이 올바르지 않습니다. (예: 09:00~18:00)");
+                LocalTime start = LocalTime.parse(times[0].trim());
+                LocalTime end = LocalTime.parse(times[1].trim());
+
+                Schedule schedule = Schedule.builder()
+                        .store(request.getStore())
+                        .user(request.getRequester())
+                        .workDate(request.getTargetDate())
+                        .startTime(start)
+                        .endTime(end)
+                        .breakTime(0)
+                        .build();
+                scheduleRepository.save(schedule);
+                log.info("✅ [ScheduleService] 스케줄 등록(정정 요청 승인) 완료! ID: {}", schedule.getId());
+                return;
+            }
+        }
+
+        if (targetType == RequestTargetType.ATTENDANCE) {
+            if (requestType == RequestType.UPDATE) {
+                attendanceService.updateByRequest(request.getTargetId(), request.getAfterValue());
+                return;
+            }
+            if (requestType == RequestType.DELETE) {
+                attendanceService.deleteByRequest(request.getTargetId());
+                return;
+            }
+            // ATTENDANCE REGISTER는 현재 스펙/데이터가 불명확하여 미지원
+            if (requestType == RequestType.REGISTER) {
+                throw new UnsupportedOperationException("근태 REGISTER 승인 반영은 아직 지원하지 않습니다.");
+            }
+        }
+
+        throw new UnsupportedOperationException("지원하지 않는 승인 반영 조합입니다. targetType=" + targetType + ", requestType=" + requestType);
     }
 
     // 🔔 내부 메서드 2: 알림 전송 로직 분리

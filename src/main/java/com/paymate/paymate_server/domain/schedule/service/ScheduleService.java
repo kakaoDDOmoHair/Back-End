@@ -221,4 +221,15 @@ public class ScheduleService {
 
         log.info("✅ [ScheduleService] 스케줄 정정 완료! ID: {}, 변경시간: {} ~ {}", scheduleId, newStart, newEnd);
     }
+
+    /** 정정 요청 승인(DELETE) 시 스케줄 삭제 */
+    @Transactional
+    public void deleteScheduleByRequest(Long scheduleId) {
+        if (scheduleId == null) throw new IllegalArgumentException("scheduleId가 비어 있습니다.");
+        if (!scheduleRepository.existsById(scheduleId)) {
+            throw new IllegalArgumentException("Schedule not found: " + scheduleId);
+        }
+        scheduleRepository.deleteById(scheduleId);
+        log.info("🗑️ [ScheduleService] 스케줄 삭제 완료! ID: {}", scheduleId);
+    }
 }

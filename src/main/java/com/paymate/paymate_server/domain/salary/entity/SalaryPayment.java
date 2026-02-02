@@ -53,6 +53,9 @@ public class SalaryPayment extends BaseTimeEntity {
     @Column(name = "payment_url", columnDefinition = "TEXT")
     private String paymentUrl; // 명세서 PDF 경로
 
+    @Column(name = "payslip_sent_at")
+    private LocalDateTime payslipSentAt; // 명세서 이메일 발송 시각 (KST 기준 저장)
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "account_id") // DB에 account_id 컬럼 생성
     private Account account; // 👈 이 정산건에 연결된 계좌 정보
@@ -82,5 +85,10 @@ public class SalaryPayment extends BaseTimeEntity {
             throw new IllegalStateException("정산 요청중 상태일 때만 확인 처리할 수 있습니다.");
         }
         this.status = PaymentStatus.WAITING;
+    }
+
+    /** 명세서 이메일 발송 시각 기록 (GET /salary/history 에 payslipSentAt 반영용) */
+    public void markPayslipSent() {
+        this.payslipSentAt = LocalDateTime.now();
     }
 }

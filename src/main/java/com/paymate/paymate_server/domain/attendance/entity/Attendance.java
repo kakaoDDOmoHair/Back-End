@@ -112,4 +112,13 @@ public class Attendance {
 
         this.checkOutTime = java.time.LocalDateTime.of(targetDate, newTime);
     }
+
+    /**
+     * 정정 요청 승인 시 출/퇴근 시간을 함께 수정.
+     * 상태(status)나 위치 정보는 유지합니다.
+     */
+    public void updateTimes(LocalDateTime newCheckInTime, LocalDateTime newCheckOutTime) {
+        this.checkInTime = newCheckInTime;
+        this.checkOutTime = newCheckOutTime;
+    }
 }

@@ -13,6 +13,11 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.List;
 
 @Configuration
 @EnableWebSecurity
@@ -24,6 +29,9 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
+                // 0. CORS 허용 (프론트/ngrok 등에서 네트워크 오류 방지)
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+
                 // 1. CSRF, FormLogin, HttpBasic 비활성화
                 .csrf(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
@@ -54,6 +62,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/todos/**").permitAll()
                         .requestMatchers("/api/v1/modifications/**").permitAll()
                         .requestMatchers("/api/v1/notifications/**").permitAll()
+                        // 업로드된 정적 파일(계약서 이미지 등)은 공개 조회 허용
+                        .requestMatchers("/uploads/**").permitAll()
                         .anyRequest().authenticated()
                 )
 
@@ -66,5 +76,19 @@ public class SecurityConfig {
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
+    }
+
+    /** CORS: 프론트(Expo, ngrok 등)에서 API 호출 시 차단 방지 */
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOriginPatterns(List.of("*"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
+        config.setAllowedHeaders(List.of("*"));
+        config.setAllowCredentials(false); // * 허용 시 credentials false 권장
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
     }
 }

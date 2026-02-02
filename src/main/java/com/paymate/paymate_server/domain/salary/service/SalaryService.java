@@ -49,7 +49,9 @@ import org.xhtmlrenderer.pdf.ITextRenderer;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -343,12 +345,17 @@ public class SalaryService {
     public List<SalaryDto.HistoryResponse> getSalaryHistory(Long userId) {
         User user = memberRepository.findById(userId).orElseThrow(() -> new IllegalArgumentException("사용자 없음"));
         List<SalaryPayment> payments = salaryPaymentRepository.findAllByUserOrderByPeriodStartDesc(user);
+        ZoneId kst = ZoneId.of("Asia/Seoul");
         return payments.stream().map(p -> SalaryDto.HistoryResponse.builder()
                 .id(p.getId())
                 .month(p.getPeriodStart().getMonthValue() + "월")
                 .amount(p.getTotalAmount())
                 .totalHours(p.getTotalHours())
                 .status(p.getStatus().toString())
+                .payslipSentAt(p.getPayslipSentAt() == null ? null
+                        : p.getPayslipSentAt().atZone(ZoneId.systemDefault())
+                                .withZoneSameInstant(kst)
+                                .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME))
                 .build()
         ).collect(Collectors.toList());
     }
@@ -409,6 +416,7 @@ public class SalaryService {
 
     // [업그레이드] 실제 PDF 생성 및 이메일 전송 로직 적용
     @Async
+    @Transactional
     public void sendPayslipEmail(Long paymentId) {
         SalaryPayment payment = salaryPaymentRepository.findById(paymentId)
                 .orElseThrow(() -> new IllegalArgumentException("정산 내역 없음"));
@@ -441,10 +449,35 @@ public class SalaryService {
             byte[] pdfBytes;
             try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
                 ITextRenderer renderer = new ITextRenderer();
-                String fontPath = "C:/Windows/Fonts/malgun.ttf";
-                File fontFile = new File(fontPath);
-                if (fontFile.exists()) {
-                    renderer.getFontResolver().addFont(fontPath, BaseFont.IDENTITY_H, BaseFont.EMBEDDED);
+                // classpath(배포/Linux) → Windows 경로 순으로 한글 폰트 로드 (이메일 PDF 한글 깨짐 방지)
+                String fontPathToUse = null;
+                try (InputStream fontStream = getClass().getResourceAsStream("/fonts/malgun.ttf")) {
+                    if (fontStream == null) {
+                        try (InputStream alt = getClass().getResourceAsStream("/fonts/NotoSansKR-Regular.ttf")) {
+                            if (alt != null) {
+                                File temp = File.createTempFile("pdf-font", ".ttf");
+                                temp.deleteOnExit();
+                                try (FileOutputStream out = new FileOutputStream(temp)) {
+                                    alt.transferTo(out);
+                                }
+                                fontPathToUse = temp.getAbsolutePath();
+                            }
+                        }
+                    } else {
+                        File temp = File.createTempFile("pdf-font", ".ttf");
+                        temp.deleteOnExit();
+                        try (FileOutputStream out = new FileOutputStream(temp)) {
+                            fontStream.transferTo(out);
+                        }
+                        fontPathToUse = temp.getAbsolutePath();
+                    }
+                }
+                if (fontPathToUse == null) {
+                    File winFont = new File("C:/Windows/Fonts/malgun.ttf");
+                    if (winFont.exists()) fontPathToUse = winFont.getAbsolutePath();
+                }
+                if (fontPathToUse != null) {
+                    renderer.getFontResolver().addFont(fontPathToUse, BaseFont.IDENTITY_H, BaseFont.EMBEDDED);
                 }
                 renderer.setDocumentFromString(html);
                 renderer.layout();
@@ -459,6 +492,17 @@ public class SalaryService {
             helper.setText("안녕하세요. " + payment.getStore().getName() + "입니다. 요청하신 임금명세서를 보내드립니다.", false);
             helper.addAttachment("임금명세서_" + payment.getUser().getName() + ".pdf", new ByteArrayResource(pdfBytes));
             mailSender.send(message);
+
+            // 임금명세서 발송 완료 알림 (앱 푸시 + 알림 목록)
+            notificationService.send(
+                    payment.getUser(),
+                    NotificationType.PAYMENT,
+                    "임금명세서 발송 완료",
+                    String.format("%s 매장 %d월 임금명세서가 이메일로 발송되었습니다. 메일함을 확인해주세요.", payment.getStore().getName(), payment.getPeriodStart().getMonthValue())
+            );
+
+            // salary/history 에 payslipSentAt 반영 (프론트에서 명세서 발송 여부 표시용)
+            payment.markPayslipSent();
 
         } catch (Exception e) {
             e.printStackTrace();
