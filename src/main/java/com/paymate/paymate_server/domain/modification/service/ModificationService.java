@@ -1,5 +1,7 @@
 package com.paymate.paymate_server.domain.modification.service;
 
+import com.paymate.paymate_server.domain.attendance.entity.Attendance;
+import com.paymate.paymate_server.domain.attendance.repository.AttendanceRepository;
 import com.paymate.paymate_server.domain.attendance.service.AttendanceService;
 import com.paymate.paymate_server.domain.member.entity.User;
 import com.paymate.paymate_server.domain.member.repository.MemberRepository;
@@ -12,6 +14,8 @@ import com.paymate.paymate_server.domain.modification.repository.ModificationRep
 import com.paymate.paymate_server.domain.notification.entity.Notification;
 import com.paymate.paymate_server.domain.notification.enums.NotificationType;
 import com.paymate.paymate_server.domain.notification.repository.NotificationRepository;
+import com.paymate.paymate_server.domain.schedule.entity.Schedule;
+import com.paymate.paymate_server.domain.schedule.repository.ScheduleRepository;
 import com.paymate.paymate_server.domain.schedule.service.ScheduleService;
 import com.paymate.paymate_server.domain.store.entity.Store;
 import com.paymate.paymate_server.domain.store.repository.StoreRepository;
@@ -32,10 +36,10 @@ public class ModificationService {
     private final ModificationRepository modificationRepository;
     private final MemberRepository memberRepository;
     private final StoreRepository storeRepository;
+    private final ScheduleRepository scheduleRepository;
+    private final AttendanceRepository attendanceRepository;
 
-    // ✅ 알림 저장을 위한 리포지토리 주입 (추가됨!)
     private final NotificationRepository notificationRepository;
-
     private final AttendanceService attendanceService;
     private final ScheduleService scheduleService;
 
@@ -79,7 +83,7 @@ public class ModificationService {
         }
 
         return requests.stream()
-                .map(ModificationResponseDto::new)
+                .map(req -> new ModificationResponseDto(req, resolveBeforeValue(req)))
                 .collect(Collectors.toList());
     }
 
@@ -87,7 +91,34 @@ public class ModificationService {
     public ModificationResponseDto getModificationDetail(Long requestId) {
         ModificationRequest request = modificationRepository.findById(requestId)
                 .orElseThrow(() -> new IllegalArgumentException("Request not found: " + requestId));
-        return new ModificationResponseDto(request);
+        return new ModificationResponseDto(request, resolveBeforeValue(request));
+    }
+
+    /**
+     * 수정/삭제 대상의 이전 값(기존 스케줄·근무 시간)을 "HH:mm~HH:mm" 형식으로 조회.
+     * DB에 저장된 beforeValue가 없어도 targetId로 Schedule/Attendance를 조회해 채움.
+     */
+    private String resolveBeforeValue(ModificationRequest request) {
+        if (request.getTargetId() == null) return null;
+        if (request.getTargetType() == RequestTargetType.SCHEDULE) {
+            return scheduleRepository.findById(request.getTargetId())
+                    .map(s -> {
+                        String start = s.getStartTime() != null ? s.getStartTime().toString().substring(0, 5) : "-";
+                        String end = s.getEndTime() != null ? s.getEndTime().toString().substring(0, 5) : "-";
+                        return start + "~" + end;
+                    })
+                    .orElse(null);
+        }
+        if (request.getTargetType() == RequestTargetType.ATTENDANCE) {
+            return attendanceRepository.findById(request.getTargetId())
+                    .map(a -> {
+                        String start = a.getCheckInTime() != null ? a.getCheckInTime().toLocalTime().toString().substring(0, 5) : "-";
+                        String end = a.getCheckOutTime() != null ? a.getCheckOutTime().toLocalTime().toString().substring(0, 5) : "-";
+                        return start + "~" + end;
+                    })
+                    .orElse(null);
+        }
+        return null;
     }
 
     // 4. 요청 승인/거절 처리 (알림 기능 추가됨!)

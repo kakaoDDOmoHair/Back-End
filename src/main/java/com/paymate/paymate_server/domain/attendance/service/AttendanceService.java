@@ -19,6 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
@@ -53,18 +55,20 @@ public class AttendanceService {
         LocalDateTime now = LocalDateTime.now();
         AttendanceStatus status = AttendanceStatus.ON;
 
-        // 지각 체크 로직
+        // 지각 체크: 한국 시간 기준 날짜·시각 사용 (서버 타임존과 무관하게 스케줄/비교 일치)
+        ZoneId korea = ZoneId.of("Asia/Seoul");
+        LocalDate workDateKorea = LocalDate.now(korea);
+        LocalTime actualStartKorea = ZonedDateTime.now(korea).toLocalTime();
+
         Optional<Schedule> scheduleOpt = scheduleRepository.findByUserAndStoreAndWorkDate(
-                user, store, now.toLocalDate()
+                user, store, workDateKorea
         );
 
         boolean isLate = false;
         if (scheduleOpt.isPresent()) {
             Schedule schedule = scheduleOpt.get();
             LocalTime scheduledStart = schedule.getStartTime();
-            LocalTime actualStart = now.toLocalTime();
-
-            if (actualStart.isAfter(scheduledStart)) {
+            if (actualStartKorea.isAfter(scheduledStart)) {
                 status = AttendanceStatus.LATE;
                 isLate = true;
             }
@@ -74,7 +78,7 @@ public class AttendanceService {
                 .user(user)
                 .store(store)
                 .checkInTime(now)
-                .workDate(now.toLocalDate().toString())
+                .workDate(workDateKorea.toString())
                 .status(status)
                 .lat(request.getLat())
                 .lon(request.getLon())

@@ -160,6 +160,17 @@ public class SalaryService {
         return String.format("[기존내역 확정] %s님께 %d원 입금 완료!", worker.getName(), amount);
     }
 
+    /**
+     * 사장님이 정산 요청 알림을 확인했을 때 (REQUESTED → WAITING).
+     * 알바생 화면에서 "확인중" 다음 단계로 넘어가도록 서버에 반영.
+     */
+    @Transactional
+    public void acknowledgePayment(Long paymentId) {
+        SalaryPayment payment = salaryPaymentRepository.findById(paymentId)
+                .orElseThrow(() -> new IllegalArgumentException("정산 내역 없음"));
+        payment.acknowledgeByOwner();
+    }
+
     // [수정] 주휴수당 및 세금 포함 계산으로 업그레이드
     @Transactional(readOnly = true)
     public SalaryDto.EstimatedResponse getEstimatedSalary(Long storeId, Long userId, int year, int month) {
@@ -276,8 +287,10 @@ public class SalaryService {
 
     @Transactional(readOnly = true)
     public Map<String, Object> getMonthlySalaryList(Long storeId, int year, int month) {
-        // 1. 매장에 소속된 모든 '알바생(WORKER)' 조회 (사장님 본인 제외)
-        List<User> workers = memberRepository.findByStoreIdAndRole(storeId, UserRole.WORKER);
+        // 1. 매장에 소속된 모든 '알바생(WORKER)' 조회 — Employment 기준 (등록된 알바생은 User.store_id 없어도 포함)
+        List<User> workers = employmentRepository.findByStore_IdAndRole(storeId, UserRole.WORKER).stream()
+                .map(Employment::getEmployee)
+                .collect(Collectors.toList());
 
         LocalDate start = LocalDate.of(year, month, 1);
         LocalDate end = start.withDayOfMonth(start.lengthOfMonth());

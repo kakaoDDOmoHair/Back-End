@@ -76,5 +76,11 @@ public class SalaryPayment extends BaseTimeEntity {
         this.paymentDate = LocalDateTime.now(); // 실제 정산 완료 시점 기록
     }
 
-
+    /** 사장님이 정산 요청 알림을 확인했을 때 (REQUESTED → WAITING). */
+    public void acknowledgeByOwner() {
+        if (this.status != PaymentStatus.REQUESTED) {
+            throw new IllegalStateException("정산 요청중 상태일 때만 확인 처리할 수 있습니다.");
+        }
+        this.status = PaymentStatus.WAITING;
+    }
 }
