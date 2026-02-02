@@ -22,6 +22,8 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -148,7 +150,7 @@ public class AttendanceService {
                 .build();
     }
 
-    // 3. 월간 조회 (기존 Develop 코드 유지)
+    // 3. 월간 조회 — 해당 유저만, 최신순 정렬, (workDate, checkInTime) 기준 중복 제거
     @Transactional(readOnly = true)
     public List<AttendanceDto.AttendanceLog> getMonthlyLog(Long userId, int year, int month) {
         User user = memberRepository.findById(userId)
@@ -157,13 +159,22 @@ public class AttendanceService {
         LocalDateTime start = LocalDateTime.of(year, month, 1, 0, 0);
         LocalDateTime end = start.plusMonths(1).minusSeconds(1);
 
-        List<Attendance> list = attendanceRepository.findAllByUserAndCheckInTimeBetween(user, start, end);
+        List<Attendance> list = attendanceRepository.findAllByUserAndCheckInTimeBetweenOrderByCheckInTimeDesc(user, start, end);
 
-        return list.stream().map(a -> AttendanceDto.AttendanceLog.builder()
+        // 같은 날짜·같은 출근 시각 기준 중복 제거 (첫 번째 = 최신 id 유지)
+        Map<String, Attendance> byKey = new LinkedHashMap<>();
+        for (Attendance a : list) {
+            String key = (a.getWorkDate() != null ? a.getWorkDate() : a.getCheckInTime().toLocalDate().toString())
+                    + "|" + (a.getCheckInTime() != null ? a.getCheckInTime().toString() : "");
+            byKey.putIfAbsent(key, a);
+        }
+        List<Attendance> deduped = new ArrayList<>(byKey.values());
+
+        return deduped.stream().map(a -> AttendanceDto.AttendanceLog.builder()
                 .attendanceId(a.getId())
                 .userId(a.getUser() != null ? a.getUser().getId() : null)
                 .name(a.getUser() != null ? a.getUser().getName() : null)
-                .workDate(a.getCheckInTime().toLocalDate().toString())
+                .workDate(a.getCheckInTime() != null ? a.getCheckInTime().toLocalDate().toString() : a.getWorkDate())
                 .storeName(a.getStore().getName())
                 .startTime(a.getCheckInTime())
                 .endTime(a.getCheckOutTime())

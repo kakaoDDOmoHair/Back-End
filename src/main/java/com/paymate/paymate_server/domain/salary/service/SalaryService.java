@@ -179,7 +179,7 @@ public class SalaryService {
 
         LocalDate start = LocalDate.of(year, month, 1);
         LocalDate end = start.withDayOfMonth(start.lengthOfMonth());
-        List<Attendance> attendances = attendanceRepository.findAllByUserAndCheckInTimeBetween(user, start.atStartOfDay(), end.atTime(23, 59, 59));
+        List<Attendance> attendances = attendanceRepository.findAllByUserAndCheckInTimeBetweenOrderByCheckInTimeDesc(user, start.atStartOfDay(), end.atTime(23, 59, 59));
 
         double totalHours = attendances.stream().mapToDouble(Attendance::calculateTotalHours).sum();
 

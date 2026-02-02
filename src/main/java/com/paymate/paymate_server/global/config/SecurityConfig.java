@@ -53,6 +53,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/salary/**").permitAll()
                         .requestMatchers("/api/v1/todos/**").permitAll()
                         .requestMatchers("/api/v1/modifications/**").permitAll()
+                        .requestMatchers("/api/v1/notifications/**").permitAll()
                         .anyRequest().authenticated()
                 )
 

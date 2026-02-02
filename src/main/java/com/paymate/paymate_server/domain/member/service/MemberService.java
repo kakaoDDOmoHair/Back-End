@@ -144,7 +144,7 @@ public class MemberService {
 
         // 2. 출퇴근 기록 삭제 (넓은 범위로 조회하여 모든 기록 삭제)
         List<com.paymate.paymate_server.domain.attendance.entity.Attendance> attendances = 
-            attendanceRepository.findAllByUserAndCheckInTimeBetween(user, 
+            attendanceRepository.findAllByUserAndCheckInTimeBetweenOrderByCheckInTimeDesc(user, 
                 java.time.LocalDateTime.of(2000, 1, 1, 0, 0), 
                 java.time.LocalDateTime.now().plusYears(10));
         attendanceRepository.deleteAll(attendances);

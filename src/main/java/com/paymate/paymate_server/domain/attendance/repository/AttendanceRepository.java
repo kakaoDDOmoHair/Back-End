@@ -18,8 +18,8 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
     // 중복 출근 방지
     boolean existsByUserAndStatus(User user, AttendanceStatus status);
 
-    // 월간/일간 조회용 (기간 검색)
-    List<Attendance> findAllByUserAndCheckInTimeBetween(User user, LocalDateTime start, LocalDateTime end);
+    // 월간/일간 조회용 (기간 검색) — 최신 출근순 정렬
+    List<Attendance> findAllByUserAndCheckInTimeBetweenOrderByCheckInTimeDesc(User user, LocalDateTime start, LocalDateTime end);
 
     // 매장별 일간 조회 (사장님용)
     List<Attendance> findAllByStoreAndCheckInTimeBetween(Store store, LocalDateTime start, LocalDateTime end);

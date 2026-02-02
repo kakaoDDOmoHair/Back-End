@@ -29,7 +29,7 @@ public class VerificationService {
     public VerificationDto.Response verifyAccount(VerificationDto.Request request) {
 
         // 1. 가짜 은행 DB(verification_account)에서 해당 계좌가 있는지 찾음
-        BankAccount bankAccount = bankRepository.findByBankNameAndAccountNumber(request.getBankName(), request.getAccountNumber())
+        BankAccount bankAccount = bankRepository.findFirstByBankNameAndAccountNumber(request.getBankName(), request.getAccountNumber())
                 .orElseThrow(() -> new IllegalArgumentException("해당 은행에 존재하지 않는 계좌번호입니다."));
 
         // 2. 예금주 이름 비교
